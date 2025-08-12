@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.card{ @apply bg-white rounded-2xl shadow ring-1 ring-slate-200; }
+.card-pad{ @apply p-5; }
+input,select,textarea{ @apply rounded border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500; }
+button{ @apply rounded; }
