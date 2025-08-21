@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import useUserProfile from '../hooks/useUserProfile';
 
-const EXPENSE_KEYS = ['WATER','TEA','DISCOUNT','ALTERATION','STAFF LUNCH','GENERATOR','SHOP RENT','ELECTRICITY','HOME EXPENSE','PETROL','SUNDAY','CASH RETURN','TRANSPORT','Other Exp.   (if any)'];
+const EXPENSE_KEYS = ['WATER','TEA','DISCOUNT','ALTERATION','STAFF LUNCH','GENERATOR','SHOP RENT','ELECTRICITY','HOME EXPENSE','PETROL','SUNDAY','CASH RETURN','TRANSPORT'];
 
 const cleanNumber = (n) => {
   if (n === null || n === undefined || n === '') return 0;
@@ -32,7 +32,7 @@ const closingFrom = (r) => {
 };
 
 export default function BulkUpload() {
-  const { profile } = useUserProfile();
+  const { profile, getStoresForFiltering } = useUserProfile();
   const [stores, setStores] = useState([]);
   const [storeId, setStoreId] = useState('');
   const [rows, setRows] = useState([]);
@@ -45,31 +45,41 @@ export default function BulkUpload() {
   useEffect(() => { (async () => {
     const ss = await getDocs(collection(db, 'stores'));
     let list = ss.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (profile?.role === 'MANAGER' && Array.isArray(profile.stores) && profile.stores.length) {
-      list = list.filter(s => profile.stores.includes(s.id));
+    
+    // Use new consistent access control pattern
+    const userStores = getStoresForFiltering();
+    if (userStores.length > 0) {
+      list = list.filter(s => userStores.includes(s.id));
     }
+    
     setStores(list);
-  })() }, [profile?.role, profile?.stores?.length]);
+  })() }, [profile?.role, profile?.assignedStore]);
 
   const selectedStore = useMemo(() => stores.find(s => s.id === storeId), [stores, storeId]);
 
   const parse = async () => {
     setMsg('');
     if (!file) { setMsg('Choose the January Excel'); return; }
-    const data = await file.arrayBuffer();
-    const wb = XLSX.read(data, { type: 'array' });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
-    if (aoa.length < 3) { setMsg('Sheet seems empty'); return; }
-    const headers = (aoa[1] || []).map(h => String(h || '').trim());
-    const body = aoa.slice(2);
+    
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+      if (aoa.length < 3) { setMsg('Sheet seems empty'); return; }
+      const headers = (aoa[1] || []).map(h => String(h || '').trim());
+      const body = aoa.slice(2);
+      
+      console.log('BulkUpload: Headers found:', headers);
+      console.log('BulkUpload: Total rows to process:', body.length);
 
-    const idx = (name) => headers.findIndex(h => h === name);
-    const col = (row, name) => { const i = idx(name); return i>=0? row[i]: '' };
+      const idx = (name) => headers.findIndex(h => h === name);
+      const col = (row, name) => { const i = idx(name); return i>=0? row[i]: '' };
 
     const HDR = {
       date: 'Date',
       opening: 'Opening\n Balance',
+      closing: 'Closing\n Balance',
       compSale: 'COMPUTER  Sale',
       manualSale: 'MANUAL SALE',
       manualBilled: 'MANUAL BILLED',
@@ -99,6 +109,7 @@ export default function BulkUpload() {
       const row = {
         date,
         openingBalance: cleanNumber(col(r, HDR.opening)),
+        closingBalance: cleanNumber(col(r, HDR.closing)), // Use closing balance from Excel directly
         computerSale: cleanNumber(col(r, HDR.compSale)),
         manualSale: cleanNumber(col(r, HDR.manualSale)),
         manualBilled: cleanNumber(col(r, HDR.manualBilled)),
@@ -117,44 +128,87 @@ export default function BulkUpload() {
         expenseTotal: cleanNumber(col(r, HDR.totalExpense)) || expParts,
         staffSalaryTotal: staffTotal
       };
-      row.closingBalance = closingFrom(row);
+      // Remove the automatic closing balance calculation - use Excel data as-is
       mapped.push(row)
     }
-    setRawPreview(mapped.slice(0,50)); setRows(mapped); setMsg(`Parsed ${mapped.length} rows. Import when ready.`);
+    setRawPreview(mapped.slice(0,50)); 
+    setRows(mapped); 
+    setMsg(`Parsed ${mapped.length} rows. Import when ready.`);
+    } catch (error) {
+      console.error('BulkUpload: Error parsing Excel file:', error);
+      setMsg(`❌ Error parsing Excel file: ${error.message}`);
+    }
   };
 
   const importRows = async () => {
     if (!storeId) { setMsg('Select store'); return; }
     if (!rows.length) { setMsg('Parse a file first'); return; }
+    
     setBusy(true);
-    let inserted=0, skipped=0, overwritten=0;
-    try{
-      for(const r of rows){
-        const docId = `${storeId}_${r.date}`;
-        const ref = doc(db, 'rokar', docId);
-        const exists = await getDoc(ref);
-        if (exists.exists() && !overwrite) { skipped++; continue; }
+    setMsg('Starting import...');
+    
+    let inserted = 0, skipped = 0, overwritten = 0, errors = 0;
+    const totalRows = rows.length;
+    
+    try {
+      console.log(`BulkUpload: Starting import of ${totalRows} rows for store: ${storeId}`);
+      
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        
+        // Update progress message every 10 rows
+        if (i % 10 === 0 || i === rows.length - 1) {
+          setMsg(`Importing... ${i + 1}/${totalRows} (${Math.round(((i + 1) / totalRows) * 100)}%)`);
+        }
+        
+        try {
+          const docId = `${storeId}_${r.date}`;
+          const ref = doc(db, 'rokar', docId);
+          
+          // Check if document exists
+          const exists = await getDoc(ref);
+          
+          if (exists.exists() && !overwrite) { 
+            skipped++; 
+            continue; 
+          }
 
-        const payloadBase = {
-          ...r,
-          storeId,
-          storeName: selectedStore?.name||'',
-          brand:selectedStore?.brand||'',
-          city:selectedStore?.city||''
-        };
+          const payloadBase = {
+            ...r,
+            storeId,
+            storeName: selectedStore?.name || '',
+            brand: selectedStore?.brand || '',
+            city: selectedStore?.city || '',
+            importedAt: new Date(),
+            importedBy: profile?.email || 'unknown'
+          };
 
-        if (exists.exists() && overwrite) {
-          await setDoc(ref, { ...payloadBase, updatedAt: new Date() }, { merge: false });
-          overwritten++;
-        } else {
-          await setDoc(ref, { ...payloadBase, createdAt: new Date() }, { merge: false });
-          inserted++;
+          if (exists.exists() && overwrite) {
+            await setDoc(ref, { ...payloadBase, updatedAt: new Date() }, { merge: false });
+            overwritten++;
+            console.log(`BulkUpload: Overwrote document ${docId}`);
+          } else {
+            await setDoc(ref, { ...payloadBase, createdAt: new Date() }, { merge: false });
+            inserted++;
+            console.log(`BulkUpload: Created document ${docId}`);
+          }
+        } catch (rowError) {
+          console.error(`BulkUpload: Error processing row ${i + 1}:`, rowError);
+          errors++;
+          // Continue with next row instead of stopping
         }
       }
-      setMsg(`✅ Imported ${inserted} • Overwrote ${overwritten} • Skipped ${skipped}`)
-    }catch(e){
-      console.error(e); setMsg('❌ Import failed: '+(e.code||e.message))
-    }finally{ setBusy(false) }
+      
+      const resultMsg = `✅ Import completed! • Imported: ${inserted} • Overwrote: ${overwritten} • Skipped: ${skipped} • Errors: ${errors}`;
+      console.log('BulkUpload: Import completed:', resultMsg);
+      setMsg(resultMsg);
+      
+    } catch (e) {
+      console.error('BulkUpload: Import failed:', e);
+      setMsg(`❌ Import failed: ${e.code || e.message}`);
+    } finally { 
+      setBusy(false);
+    }
   };
 
   return (
@@ -174,13 +228,28 @@ export default function BulkUpload() {
         </div>
         <div className="flex items-end gap-2">
           <button onClick={parse} className="bg-slate-800 text-white px-4 py-2 rounded">Parse & Preview</button>
-          <button disabled={busy} onClick={importRows} className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-60">{busy? 'Importing…' : 'Import'}</button>
+          <button disabled={busy} onClick={importRows} className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-60">
+            {busy ? 'Importing...' : 'Import'}
+          </button>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)} />
             Overwrite existing
           </label>
         </div>
       </div>
+      
+      {/* Progress Bar */}
+      {busy && (
+        <div className="bg-white rounded shadow p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Import Progress</span>
+            <span className="text-sm text-gray-500">{msg}</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="bg-green-600 h-2 rounded-full transition-all duration-300" style={{ width: '100%' }}></div>
+          </div>
+        </div>
+      )}
       {msg && <p className="mb-4">{msg}</p>}
       {!!rawPreview.length && (
         <div className="bg-white rounded shadow p-4 overflow-auto">

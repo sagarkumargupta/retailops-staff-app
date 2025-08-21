@@ -1,3 +1,18 @@
+/* Mobile scroll optimizations */
+html, body, #root {
+  height: 100%;
+}
+body {
+  overscroll-behavior-y: contain;
+}
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-card {
+  max-height: 70vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,3 +21,110 @@
 .card-pad{ @apply p-5; }
 input,select,textarea{ @apply rounded border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500; }
 button{ @apply rounded; }
+
+/* Remove up/down arrows from number inputs - Comprehensive fix */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
+/* Firefox */
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+
+/* Edge and IE */
+input[type="number"]::-ms-clear,
+input[type="number"]::-ms-expand {
+  display: none !important;
+}
+
+/* Additional specificity for any framework overrides */
+.w-full input[type="number"]::-webkit-outer-spin-button,
+.w-full input[type="number"]::-webkit-inner-spin-button,
+.p-2 input[type="number"]::-webkit-outer-spin-button,
+.p-2 input[type="number"]::-webkit-inner-spin-button,
+.border input[type="number"]::-webkit-outer-spin-button,
+.border input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
+/* Remove time input spinners and make them read-only styled */
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-inner-spin-button,
+input[type="time"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
+/* Firefox time input */
+input[type="time"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+
+/* Additional specificity for time inputs */
+.w-full input[type="time"]::-webkit-calendar-picker-indicator,
+.w-full input[type="time"]::-webkit-inner-spin-button,
+.w-full input[type="time"]::-webkit-outer-spin-button,
+.p-2 input[type="time"]::-webkit-calendar-picker-indicator,
+.p-2 input[type="time"]::-webkit-inner-spin-button,
+.p-2 input[type="time"]::-webkit-outer-spin-button,
+.border input[type="time"]::-webkit-calendar-picker-indicator,
+.border input[type="time"]::-webkit-inner-spin-button,
+.border input[type="time"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
+/* Make disabled/readonly time inputs completely non-interactive */
+input[type="time"][readonly],
+input[type="time"][disabled] {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  pointer-events: none !important;
+  cursor: not-allowed !important;
+}
+
+/* Prevent any time input modifications */
+input[type="time"][readonly]:focus,
+input[type="time"][disabled]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Additional security for time inputs */
+input[type="time"][readonly]::-webkit-calendar-picker-indicator,
+input[type="time"][disabled]::-webkit-calendar-picker-indicator,
+input[type="time"][readonly]::-webkit-inner-spin-button,
+input[type="time"][disabled]::-webkit-inner-spin-button,
+input[type="time"][readonly]::-webkit-outer-spin-button,
+input[type="time"][disabled]::-webkit-outer-spin-button {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

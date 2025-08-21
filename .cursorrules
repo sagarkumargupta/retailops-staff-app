@@ -1,0 +1,22 @@
+# Cursor Performance Optimization Rules
+
+# Disable heavy AI features when not needed
+- Disable AI chat when working on large files
+- Limit AI completions to essential suggestions only
+- Use AI features sparingly during heavy development
+
+# File size limits for AI processing
+- Files larger than 1000 lines should have AI features disabled
+- Large JSON files should be excluded from AI indexing
+- Binary files should never be processed by AI
+
+# Performance guidelines
+- Keep workspace clean and organized
+- Close unused files and tabs
+- Restart Cursor if performance degrades
+- Monitor system resources during development
+
+# Recommended extensions for performance
+- Essential: ESLint, Prettier, GitLens
+- Avoid: Multiple language servers, heavy syntax highlighters
+- Disable: Unused extensions and experimental features

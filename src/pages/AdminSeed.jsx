@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../firebase'
 import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore'
+import { updateAllUsersWithAITrainingPermissions } from '../utils/userManagement'
 import janData from '../data/mufti_bettiah_january_normalized.json'
 
 export default function AdminSeed(){
@@ -8,6 +9,8 @@ export default function AdminSeed(){
   const [storeId,setStoreId]=useState('')
   const [msg,setMsg]=useState('')
   const [busy,setBusy]=useState(false)
+  const [permissionMsg,setPermissionMsg]=useState('')
+  const [permissionBusy,setPermissionBusy]=useState(false)
 
   useEffect(()=>{ (async()=>{
     const snap=await getDocs(collection(db,'stores'))
@@ -32,9 +35,41 @@ export default function AdminSeed(){
     }catch(e){ console.error(e); setMsg('❌ Failed: '+(e.code||e.message)) } finally{ setBusy(false) }
   }
 
+  const updatePermissions = async () => {
+    setPermissionBusy(true);
+    setPermissionMsg('Updating permissions...');
+    try {
+      const result = await updateAllUsersWithAITrainingPermissions();
+      setPermissionMsg(`✅ Successfully updated ${result.updatedCount} users • Errors: ${result.errorCount}`);
+    } catch (error) {
+      console.error('Error updating permissions:', error);
+      setPermissionMsg('❌ Failed to update permissions: ' + error.message);
+    } finally {
+      setPermissionBusy(false);
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-6">
       <h2 className="text-2xl font-semibold mb-4">Admin → Seed January Data</h2>
+      
+      {/* AI Training Permissions Update */}
+      <div className="card card-pad mb-6">
+        <h3 className="text-lg font-semibold mb-3">🔐 AI Training Permissions</h3>
+        <p className="text-sm text-slate-600 mb-3">
+          Update all existing users with AI training permissions. This will ensure SUPER_ADMIN, ADMIN, OWNER, and MANAGER roles can access AI generators.
+        </p>
+        <button 
+          disabled={permissionBusy} 
+          onClick={updatePermissions} 
+          className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-60 hover:bg-green-700"
+        >
+          {permissionBusy ? 'Updating...' : 'Update AI Training Permissions'}
+        </button>
+        {permissionMsg && <p className="mt-2 text-sm">{permissionMsg}</p>}
+      </div>
+
+      {/* Seed Data Section */}
       <div className="card card-pad mb-4 grid md:grid-cols-3 gap-3">
         <div>
           <label className="block text-sm mb-1">Store</label>

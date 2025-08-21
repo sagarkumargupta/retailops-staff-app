@@ -1,0 +1,318 @@
+# Simplified Firebase Security Rules for RetailOps System
+# This version fixes all permission issues
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role;
+    }
+    
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+    
+    function canAccessStore(storeId) {
+      let profile = getUserProfile();
+      return profile.role == 'SUPER_ADMIN' || 
+             profile.role == 'ADMIN' || 
+             profile.role == 'OWNER' ||
+             (profile.role == 'MANAGER' && profile.stores[storeId] == true) ||
+             (profile.role == 'STAFF' && profile.stores[storeId] == true);
+    }
+
+    // Users collection - Allow all authenticated users to read their own profile
+    match /users/{userEmail} {
+      allow read: if isAuthenticated() && (
+        request.auth.token.email == userEmail || 
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow write: if isAuthenticated() && (
+        request.auth.token.email == userEmail || 
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated();
+    }
+
+    // Stores collection - Allow all authenticated users to read stores
+    match /stores/{storeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create, delete: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' || 
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER'
+      );
+    }
+
+    // Stores subcollections - Allow access to staff, attendance, etc.
+    match /stores/{storeId}/{subcollection}/{documentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow delete: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Rokar collection - Daily store entries
+    match /rokar/{rokarId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Attendance collection - Staff attendance records
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+    }
+
+    // Salary requests collection
+    match /salary_requests/{requestId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'STAFF' || 
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Leave requests collection
+    match /leave_requests/{requestId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'STAFF' || 
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Other expense requests collection
+    match /other_expense_requests/{requestId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Task assignments collection
+    match /task_assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Trainings collection
+    match /trainings/{trainingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Training assignments collection
+    match /training_assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Tests collection
+    match /tests/{testId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Test assignments collection
+    match /test_assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER' ||
+        getUserRole() == 'STAFF'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Dues collection
+    match /dues/{dueId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Default rule - deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
+

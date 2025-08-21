@@ -1,0 +1,404 @@
+# Professional Firebase Security Rules for RetailOps System
+# Hierarchical access control with store-based permissions
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+    
+    function getUserRole() {
+      return getUserProfile().role;
+    }
+    
+    function getUserStores() {
+      return getUserProfile().stores || {};
+    }
+    
+    function getUserAssignedStore() {
+      return getUserProfile().assignedStore;
+    }
+    
+    function getUserAssignedOwner() {
+      return getUserProfile().assignedOwner;
+    }
+    
+    // Check if user can access a specific store
+    function canAccessStore(storeId) {
+      let profile = getUserProfile();
+      return profile.role == 'SUPER_ADMIN' || 
+             profile.role == 'ADMIN' || 
+             profile.role == 'OWNER' ||
+             (profile.role == 'MANAGER' && profile.assignedStore == storeId) ||
+             (profile.role == 'STAFF' && profile.assignedStore == storeId);
+    }
+    
+    // Check if user can access owner's data
+    function canAccessOwner(ownerId) {
+      let profile = getUserProfile();
+      return profile.role == 'SUPER_ADMIN' || 
+             profile.role == 'ADMIN' || 
+             profile.role == 'OWNER' ||
+             (profile.role == 'MANAGER' && profile.assignedOwner == ownerId);
+    }
+
+    // Users collection - Hierarchical access control
+    match /users/{userEmail} {
+      allow read: if isAuthenticated() && (
+        request.auth.token.email == userEmail || 
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessOwner(resource.data.assignedOwner))
+      );
+      allow write: if isAuthenticated() && (
+        request.auth.token.email == userEmail || 
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        (getUserRole() == 'OWNER' && canAccessOwner(resource.data.assignedOwner))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Stores collection - Store-based access control
+    match /stores/{storeId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(storeId))
+      );
+      allow create, delete: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' || 
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER'
+      );
+    }
+
+    // Store subcollections - Staff, attendance, etc.
+    match /stores/{storeId}/{subcollection}/{documentId} {
+      allow read: if isAuthenticated() && canAccessStore(storeId);
+      allow write: if isAuthenticated() && canAccessStore(storeId);
+      allow create: if isAuthenticated() && canAccessStore(storeId);
+      allow delete: if isAuthenticated() && canAccessStore(storeId);
+    }
+
+    // Rokar collection - Store-based access
+    match /rokar/{rokarId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Attendance collection - Store-based access
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && request.resource.data.userEmail == request.auth.token.email)
+      );
+    }
+
+    // Salary requests collection - Store-based access
+    match /salary_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'STAFF' || 
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Leave requests collection - Store-based access
+    match /leave_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'STAFF' || 
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Other expense requests collection - Store-based access
+    match /other_expense_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'MANAGER'
+      );
+    }
+
+    // Tasks collection - Store-based access
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Task assignments collection - Store-based access
+    match /task_assignments/{assignmentId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Trainings collection - Store-based access
+    match /trainings/{trainingId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Training assignments collection - Store-based access
+    match /training_assignments/{assignmentId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Tests collection - Store-based access
+    match /tests/{testId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Test assignments collection - Store-based access
+    match /test_assignments/{assignmentId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId)) ||
+        (getUserRole() == 'STAFF' && resource.data.userEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Customers collection - Store-based access
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Dues collection - Store-based access
+    match /dues/{dueId} {
+      allow read: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        getUserRole() == 'SUPER_ADMIN' ||
+        getUserRole() == 'ADMIN' || 
+        getUserRole() == 'OWNER' ||
+        (getUserRole() == 'MANAGER' && canAccessStore(request.resource.data.storeId))
+      );
+    }
+
+    // Default rule - deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
+

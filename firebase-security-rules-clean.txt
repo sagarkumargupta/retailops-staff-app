@@ -1,0 +1,560 @@
+# Firebase Security Rules for RetailOps System
+# Clean version without syntax errors
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'SUPER_ADMIN';
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'ADMIN';
+    }
+    
+    function isOwner() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'OWNER';
+    }
+    
+    function isManager() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'MANAGER';
+    }
+    
+    function isStaff() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'STAFF';
+    }
+    
+    function isOffice() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'OFFICE';
+    }
+    
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+    
+    function hasPermission(permission) {
+      return getUserProfile().permissions[permission] == true;
+    }
+    
+    function canAccessStore(storeId) {
+      return getUserProfile().role == 'SUPER_ADMIN' || 
+             getUserProfile().role == 'ADMIN' || 
+             getUserProfile().role == 'OWNER' ||
+             (getUserProfile().role == 'MANAGER' && getUserProfile().stores[storeId] == true) ||
+             (getUserProfile().role == 'STAFF' && getUserProfile().stores[storeId] == true);
+    }
+    
+    function isStoreManager(storeId) {
+      return getUserProfile().role == 'MANAGER' && getUserProfile().stores[storeId] == true;
+    }
+    
+    function isStoreStaff(storeId) {
+      return getUserProfile().role == 'STAFF' && getUserProfile().stores[storeId] == true;
+    }
+
+    // Users collection - User profiles and permissions
+    match /users/{userEmail} {
+      allow read: if isAuthenticated() && (
+        request.auth.token.email == userEmail || 
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageUsers'))
+      );
+      allow write: if isAuthenticated() && (
+        request.auth.token.email == userEmail || 
+        isSuperAdmin() ||
+        isAdmin() || 
+        (isManager() && hasPermission('canManageUsers'))
+      );
+      allow create: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isManager());
+    }
+
+    // Stores collection - Store management
+    match /stores/{storeId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        canAccessStore(storeId)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageStores') && canAccessStore(storeId))
+      );
+      allow create, delete: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isOwner());
+    }
+
+    // Rokar collection - Daily store entries
+    match /rokar/{rokarId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        canAccessStore(resource.data.storeId)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageRokar') && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageRokar'))
+      );
+    }
+
+    // Attendance collection - Staff attendance records
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        canAccessStore(resource.data.storeId) ||
+        (isStaff() && resource.data.staffEmail == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageAttendance') && canAccessStore(resource.data.storeId)) ||
+        (isStaff() && resource.data.staffEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageAttendance')) ||
+        isStaff()
+      );
+    }
+
+    // Salary requests collection
+    match /salary_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        canAccessStore(resource.data.storeId) ||
+        (isStaff() && resource.data.staffEmail == request.auth.token.email) ||
+        (isManager() && canAccessStore(resource.data.storeId))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageSalary') && canAccessStore(resource.data.storeId)) ||
+        (isStaff() && resource.data.staffEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (isStaff() || isManager());
+    }
+
+    // Leave requests collection
+    match /leave_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        canAccessStore(resource.data.storeId) ||
+        (isStaff() && resource.data.staffEmail == request.auth.token.email) ||
+        (isManager() && canAccessStore(resource.data.storeId))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageLeave') && canAccessStore(resource.data.storeId)) ||
+        (isStaff() && resource.data.staffEmail == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (isStaff() || isManager());
+    }
+
+    // Other expenses collection
+    match /other_expenses/{expenseId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        canAccessStore(resource.data.storeId) ||
+        (isManager() && canAccessStore(resource.data.storeId))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && canAccessStore(resource.data.storeId))
+      );
+      allow create: if isAuthenticated() && (isManager() || isAdmin());
+    }
+
+    // Invites collection - Manager invitations
+    match /invites/{inviteId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageUsers'))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageUsers'))
+      );
+      allow create: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isManager());
+    }
+
+    // Tasks collection - Task Management System
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks')) ||
+        (isStaff() && (
+          resource.data.assignTo == 'all_staff' ||
+          resource.data.assignTo == 'individual' && request.auth.token.email in resource.data.assignees
+        ))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks'))
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks'))
+      );
+    }
+
+    // Task executions collection
+    match /task_executions/{executionId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks')) ||
+        (isStaff() && resource.data.userId == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks')) ||
+        (isStaff() && resource.data.userId == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (isStaff() || isManager() || isAdmin());
+    }
+
+    // Trainings collection - Training Management System
+    match /trainings/{trainingId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings')) ||
+        (isStaff() && (
+          resource.data.targetAudience == 'all_staff' ||
+          resource.data.targetAudience == 'individual' && request.auth.token.email in resource.data.assignees
+        ))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings'))
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings'))
+      );
+    }
+
+    // Training completions collection
+    match /training_completions/{completionId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings')) ||
+        (isStaff() && resource.data.userId == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings')) ||
+        (isStaff() && resource.data.userId == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (isStaff() || isManager() || isAdmin());
+    }
+
+    // Tests collection - Test Management System
+    match /tests/{testId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests')) ||
+        (isStaff() && (
+          resource.data.targetAudience == 'all_staff' ||
+          resource.data.targetAudience == 'individual' && request.auth.token.email in resource.data.assignees
+        ))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests'))
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests'))
+      );
+    }
+
+    // Test results collection
+    match /test_results/{resultId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests')) ||
+        (isStaff() && resource.data.userId == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests')) ||
+        (isStaff() && resource.data.userId == request.auth.token.email)
+      );
+      allow create: if isAuthenticated() && (isStaff() || isManager() || isAdmin());
+    }
+
+    // Customers collection - Customer Management System
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        (isManager() && hasPermission('canManageCustomers'))
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageCustomers'))
+      );
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageCustomers'))
+      );
+    }
+
+    // Bulk upload collection
+    match /bulk_uploads/{uploadId} {
+      allow read, write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageStores'))
+      );
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      allow read, write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isOffice() ||
+        (isManager() && hasPermission('canViewReports'))
+      );
+    }
+
+    // Opening balance manager collection
+    match /opening_balances/{balanceId} {
+      allow read, write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner()
+      );
+    }
+
+    // Default rule - deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+# Firebase Storage Rules for RetailOps System
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.token.email)).data.role == 'SUPER_ADMIN';
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.token.email)).data.role == 'ADMIN';
+    }
+    
+    function isOwner() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.token.email)).data.role == 'OWNER';
+    }
+    
+    function isManager() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.token.email)).data.role == 'MANAGER';
+    }
+    
+    function isStaff() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.token.email)).data.role == 'STAFF';
+    }
+    
+    function hasPermission(permission) {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.token.email)).data.permissions[permission] == true;
+    }
+
+    // Staff photos - Attendance and profile photos
+    match /staff-photos/{userId}/{photoId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() || 
+        isManager() ||
+        request.auth.uid == userId
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        request.auth.uid == userId
+      );
+    }
+
+    // Task validation media - Images, voice notes, etc.
+    match /task-media/{taskId}/{mediaId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks')) ||
+        (isStaff() && resource.metadata.userId == request.auth.token.email)
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTasks')) ||
+        (isStaff() && request.resource.metadata.userId == request.auth.token.email)
+      );
+    }
+
+    // Training media - Videos, PDFs, etc.
+    match /training-media/{trainingId}/{mediaId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings')) ||
+        isStaff()
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTrainings'))
+      );
+    }
+
+    // Test media - Question images, etc.
+    match /test-media/{testId}/{mediaId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests')) ||
+        isStaff()
+      );
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        (isManager() && hasPermission('canManageTests'))
+      );
+    }
+
+    // Document uploads - General purpose
+    match /documents/{documentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isAdmin() || 
+        isOwner() ||
+        isManager()
+      );
+    }
+
+    // Default rule - deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
+
+

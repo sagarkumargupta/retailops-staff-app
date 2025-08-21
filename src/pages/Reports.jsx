@@ -3,6 +3,7 @@ import { db, auth } from '../firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import useUserProfile from '../hooks/useUserProfile';
 import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useLocation } from 'react-router-dom';
 import {
   LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend
@@ -17,7 +18,8 @@ function ymdDaysAgo(n) {
 
 export default function Reports() {
   const [user] = useAuthState(auth);
-  const { profile } = useUserProfile();
+  const { profile, getStoresForFiltering } = useUserProfile();
+  const location = useLocation();
 
   const [stores, setStores] = useState([]);
   const [selectedStoreIds, setSelectedStoreIds] = useState([]);
@@ -25,16 +27,42 @@ export default function Reports() {
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
+  const [lastYearData, setLastYearData] = useState([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
-  useEffect(() => { (async () => {
-    const ss = await getDocs(collection(db, 'stores'));
-    let list = ss.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (profile?.role === 'MANAGER' && Array.isArray(profile.stores) && profile.stores.length) {
-      list = list.filter(s => profile.stores.includes(s.id));
+  useEffect(() => {
+    (async () => {
+      const ss = await getDocs(collection(db, 'stores'));
+      let list = ss.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Use new consistent access control pattern
+      const userStores = getStoresForFiltering();
+      if (userStores.length > 0) {
+        list = list.filter(s => userStores.includes(s.id));
+      }
+      
+      setStores(list);
+      if (!storeId && list.length) setStoreId(list[0].id);
+    })();
+  }, [profile?.role, profile?.assignedStore]);
+
+  // Handle navigation state from Rokar entry
+  useEffect(() => {
+    if (location.state?.showInsights) {
+      setShowInsights(true);
+      if (location.state.selectedStore) {
+        setSelectedStoreIds([location.state.selectedStore]);
+      }
+      if (location.state.selectedDate) {
+        const selectedDate = new Date(location.state.selectedDate);
+        const fromDate = new Date(selectedDate);
+        fromDate.setDate(fromDate.getDate() - 7); // Show 7 days around the selected date
+        setFrom(fromDate.toISOString().slice(0, 10));
+        setTo(selectedDate.toISOString().slice(0, 10));
+      }
     }
-    setStores(list);
-    if (!selectedStoreIds.length && list.length) setSelectedStoreIds(list.map(s => s.id));
-  })() }, [profile?.role, profile?.stores?.length]);
+  }, [location.state]);
 
   const storeIdToName = useMemo(() => Object.fromEntries(stores.map(s => [s.id, `${s.brand || ''} — ${s.name || ''}`])), [stores]);
 
@@ -46,8 +74,9 @@ export default function Reports() {
     setBusy(true); setRows([]);
     try {
       const all = [];
-      const allowed = (profile?.role === 'MANAGER' && Array.isArray(profile.stores) && profile.stores.length)
-        ? stores.filter(s => profile.stores.includes(s.id)).map(s => s.id)
+      const userStores = getStoresForFiltering();
+      const allowed = userStores.length > 0 
+        ? stores.filter(s => userStores.includes(s.id)).map(s => s.id)
         : stores.map(s => s.id);
       const ids = (selectedStoreIds.length ? selectedStoreIds : allowed).filter(id => allowed.includes(id));
       for (const sid of ids) {
@@ -63,6 +92,36 @@ export default function Reports() {
       all.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
       setRows(all);
     } finally { setBusy(false); }
+  };
+
+  const loadLastYearData = async () => {
+    if (!selectedStoreIds.length) return;
+    
+    setInsightsLoading(true);
+    try {
+      const lastYearFrom = new Date(from);
+      lastYearFrom.setFullYear(lastYearFrom.getFullYear() - 1);
+      const lastYearTo = new Date(to);
+      lastYearTo.setFullYear(lastYearTo.getFullYear() - 1);
+      
+      const all = [];
+      for (const sid of selectedStoreIds) {
+        const q1 = query(
+          collection(db, 'rokar'),
+          where('storeId', '==', sid),
+          where('date', '>=', lastYearFrom.toISOString().slice(0, 10)),
+          where('date', '<=', lastYearTo.toISOString().slice(0, 10))
+        );
+        const snap = await getDocs(q1);
+        snap.forEach((d) => all.push({ id: d.id, ...d.data() }));
+      }
+      all.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      setLastYearData(all);
+    } catch (error) {
+      console.error('Error loading last year data:', error);
+    } finally {
+      setInsightsLoading(false);
+    }
   };
 
   useEffect(() => { if (stores.length) fetchData(); }, [stores.length]);
@@ -180,6 +239,120 @@ export default function Reports() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Insights Section */}
+      {showInsights && (
+        <div className="bg-white rounded shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-semibold text-gray-800">📊 Performance Insights & Year-over-Year Analysis</h3>
+            <button 
+              onClick={loadLastYearData}
+              disabled={insightsLoading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+            >
+              {insightsLoading ? 'Loading...' : '🔄 Load Last Year Data'}
+            </button>
+          </div>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Current Period Summary */}
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-800 mb-3">📈 Current Period ({from} to {to})</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Total Sales:</span>
+                  <span className="font-semibold text-green-600">₹{totals.sale.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Avg Daily Sales:</span>
+                  <span className="font-semibold">₹{rows.length > 0 ? Math.round(totals.sale / rows.length).toLocaleString() : 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Expenses:</span>
+                  <span className="font-semibold text-red-600">₹{(totals.expense + totals.staff).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Net Cash Flow:</span>
+                  <span className="font-semibold">₹{(totals.sale - totals.expense - totals.staff).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Last Year Comparison */}
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-green-800 mb-3">📅 Last Year Comparison</h4>
+              {lastYearData.length > 0 ? (
+                <div className="space-y-2 text-sm">
+                  {(() => {
+                    const lastYearTotal = lastYearData.reduce((sum, r) => sum + clean(r.totalSale), 0);
+                    const lastYearAvg = lastYearData.length > 0 ? Math.round(lastYearTotal / lastYearData.length) : 0;
+                    const currentAvg = rows.length > 0 ? Math.round(totals.sale / rows.length) : 0;
+                    const growth = lastYearAvg > 0 ? ((currentAvg - lastYearAvg) / lastYearAvg * 100) : 0;
+                    
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span>Last Year Sales:</span>
+                          <span className="font-semibold">₹{lastYearTotal.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Avg Daily Sales:</span>
+                          <span className="font-semibold">₹{lastYearAvg.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Growth:</span>
+                          <span className={`font-semibold ${growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {growth >= 0 ? '+' : ''}{growth.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Days Compared:</span>
+                          <span className="font-semibold">{Math.min(rows.length, lastYearData.length)}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-600">
+                  Click "Load Last Year Data" to see year-over-year comparison
+                </div>
+              )}
+            </div>
+
+            {/* Key Insights */}
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-purple-800 mb-3">💡 Key Insights</h4>
+              <div className="space-y-2 text-sm">
+                {(() => {
+                  const insights = [];
+                  const avgSale = rows.length > 0 ? totals.sale / rows.length : 0;
+                  const expenseRatio = totals.sale > 0 ? ((totals.expense + totals.staff) / totals.sale * 100) : 0;
+                  
+                  if (avgSale > 50000) insights.push('🚀 High performing period');
+                  if (expenseRatio < 30) insights.push('💰 Excellent cost control');
+                  if (expenseRatio > 50) insights.push('⚠️ High expense ratio');
+                  if (rows.length >= 7) insights.push('📊 Good data coverage');
+                  if (totals.sale > 0 && lastYearData.length > 0) {
+                    const lastYearTotal = lastYearData.reduce((sum, r) => sum + clean(r.totalSale), 0);
+                    const growth = lastYearTotal > 0 ? ((totals.sale - lastYearTotal) / lastYearTotal * 100) : 0;
+                    if (growth > 10) insights.push('📈 Strong growth vs last year');
+                    if (growth < -10) insights.push('📉 Declining vs last year');
+                  }
+                  
+                  return insights.length > 0 ? (
+                    insights.map((insight, index) => (
+                      <div key={index} className="text-gray-700">• {insight}</div>
+                    ))
+                  ) : (
+                    <div className="text-gray-600">Load data to see insights</div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!!rows.length && (
         <div className="bg-white rounded shadow overflow-auto">

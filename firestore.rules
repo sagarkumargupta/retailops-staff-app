@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    // Default rule - deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Helper function to get user role
+    function getUserRole() {
+      return request.auth != null 
+        ? get(/databases/$(db)/documents/users/$(request.auth.token.email)).data.role 
+        : null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      let role = getUserRole();
+      return role == 'SUPER_ADMIN' || role == 'ADMIN' || role == 'OWNER';
+    }
+    
+    // Attendance rules - prevent time manipulation for non-admin users
+    match /attendance/{document} {
+      // Allow read for authenticated users
+      allow read: if request.auth != null;
+      
+      // Allow create for staff/managers
+      allow create: if request.auth != null 
+        && (
+          // Staff can only create their own attendance
+          (resource.data.staffEmail == request.auth.token.email 
+           && resource.data.date == request.time.toDate().toISOString().split('T')[0])
+          ||
+          // Managers can create attendance for their store staff
+          (getUserRole() == 'MANAGER' 
+           && resource.data.storeId in get(/databases/$(db)/documents/users/$(request.auth.token.email)).data.stores)
+          ||
+          // Admins can create attendance for any store
+          isAdmin()
+        )
+        // Time validation based on user role
+        && (
+          // Admin users can set any reasonable time (within 24 hours of current time)
+          (isAdmin() && isReasonableTime(resource.data.checkIn, request.time))
+          ||
+          // Non-admin users must use current time (with 5-minute tolerance for network delays)
+          (!isAdmin() && (
+            resource.data.checkIn == request.time.toDate().toTimeString().slice(0,5)
+            || 
+            abs(diffMinutes(resource.data.checkIn, request.time.toDate().toTimeString().slice(0,5))) <= 5
+          ))
+        );
+      
+      // Allow update based on user role
+      allow update: if request.auth != null 
+        && (
+          // Managers can update attendance for their stores (but not times)
+          (getUserRole() == 'MANAGER' 
+           && resource.data.storeId in get(/databases/$(db)/documents/users/$(request.auth.token.email)).data.stores
+           && resource.data.checkIn == request.resource.data.checkIn) // Prevent time modification
+          ||
+          // Admins can update attendance including times
+          (isAdmin())
+        );
+    }
+    
+    // Allow access to other collections for authenticated users
+    match /users/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /stores/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Add other collection rules as needed
+    match /{collection}/{document} {
+      allow read, write: if request.auth != null;
+    }
+  }
+  
+  // Helper function to calculate time difference in minutes
+  function diffMinutes(time1, time2) {
+    let [h1, m1] = time1.split(':').map(Number);
+    let [h2, m2] = time2.split(':').map(Number);
+    return (h1 * 60 + m1) - (h2 * 60 + m2);
+  }
+  
+  // Helper function to check if time is reasonable (within 24 hours)
+  function isReasonableTime(checkInTime, requestTime) {
+    if (checkInTime == '') return true; // Empty time is valid for absent staff
+    
+    let [hours, minutes] = checkInTime.split(':').map(Number);
+    let checkInMinutes = hours * 60 + minutes;
+    
+    let requestMinutes = requestTime.toDate().getHours() * 60 + requestTime.toDate().getMinutes();
+    
+    // Allow times within 24 hours (1440 minutes) of current time
+    return abs(checkInMinutes - requestMinutes) <= 1440;
+  }
+}
+
+

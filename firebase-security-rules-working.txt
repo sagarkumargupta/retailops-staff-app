@@ -1,0 +1,16 @@
+# Simple Working Firebase Security Rules
+# This will fix ALL permission issues immediately
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow all authenticated users to read and write to all collections
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+
+
+

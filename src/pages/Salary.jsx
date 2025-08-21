@@ -9,7 +9,7 @@ const monthEnd = (iso) => { const d = new Date(iso+'T00:00:00'); d.setMonth(d.ge
 const clean = (v) => Number(v||0) || 0;
 
 export default function Salary(){
-  const { profile } = useUserProfile();
+  const { profile, getStoresForFiltering } = useUserProfile();
   const [stores, setStores] = useState([]);
   const [storeId, setStoreId] = useState('');
   const [month, setMonth] = useState(new Date().toISOString().slice(0,7)); // yyyy-mm
@@ -20,12 +20,16 @@ export default function Salary(){
   useEffect(()=>{ (async()=>{
     const ss = await getDocs(collection(db,'stores'));
     let list = ss.docs.map(d=>({id:d.id, ...d.data()}));
-    if(profile?.role==='MANAGER' && Array.isArray(profile.stores) && profile.stores.length){
-      list = list.filter(s => profile.stores.includes(s.id));
+    
+    // Use new consistent access control pattern
+    const userStores = getStoresForFiltering();
+    if (userStores.length > 0) {
+      list = list.filter(s => userStores.includes(s.id));
     }
+    
     setStores(list);
     if(!storeId && list.length) setStoreId(list[0].id);
-  })() }, [profile?.role, profile?.stores?.length]);
+  })() }, [profile?.role, profile?.assignedStore]);
 
   useEffect(()=>{ (async()=>{
     if(!storeId) { setStaff([]); return; }
@@ -52,7 +56,10 @@ export default function Salary(){
     const byStaff = new Map();
     for(const a of att){
       const m = byStaff.get(a.staffId) || { days:0, lates:0 };
-      if(a.present) m.days++;
+      if(a.present){
+        const fraction = typeof a.dayFraction === 'number' ? a.dayFraction : 1;
+        m.days += fraction;
+      }
       if(a.checkIn){
         const late = isLate(shiftStart, a.checkIn, grace);
         if(late) m.lates++;
