@@ -7,43 +7,78 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.rememberNavController
-import com.retailops.staff.ui.theme.RetailOpsStaffTheme
-import com.retailops.staff.navigation.StaffNavigation
-import com.retailops.staff.data.local.DatabaseHelper
-import com.retailops.staff.data.sync.DataSyncManager
+import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
-    private lateinit var databaseHelper: DatabaseHelper
-    private lateinit var dataSyncManager: DataSyncManager
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Initialize database and sync manager
-        databaseHelper = DatabaseHelper(this)
-        dataSyncManager = DataSyncManager(this, databaseHelper)
-        
         setContent {
-            RetailOpsStaffTheme {
+            MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val navController = rememberNavController()
-                    
-                    StaffNavigation(
-                        navController = navController,
-                        databaseHelper = databaseHelper,
-                        dataSyncManager = dataSyncManager
-                    )
+                    RetailOpsStaffApp()
                 }
             }
         }
     }
+}
 
-    override fun onDestroy() {
-        super.onDestroy()
-        databaseHelper.close()
+@Composable
+fun RetailOpsStaffApp() {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("RetailOps Staff App") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Welcome to RetailOps Staff App",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = "This is a comprehensive staff management application with offline capabilities.",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Features:",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("• Attendance tracking with GPS")
+                    Text("• Sales management")
+                    Text("• Expense submission")
+                    Text("• Salary requests")
+                    Text("• Leave requests")
+                    Text("• Target management")
+                    Text("• Rokar entry")
+                    Text("• Offline-first with SQLite")
+                    Text("• Firebase sync")
+                }
+            }
+        }
     }
 }
