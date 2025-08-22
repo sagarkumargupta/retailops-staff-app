@@ -19,6 +19,8 @@ export default function TaskResponses() {
   });
   const [showAssigneesModal, setShowAssigneesModal] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
+  const [showStepsModal, setShowStepsModal] = useState(false);
+  const [selectedTaskSteps, setSelectedTaskSteps] = useState([]);
 
   useEffect(() => {
     if (profile) {
@@ -399,7 +401,7 @@ export default function TaskResponses() {
       );
     }
 
-    // Group responses by task and sort steps within each task
+    // Group responses by task
     const groupedResponses = filteredResponses.reduce((groups, response) => {
       if (!groups[response.taskId]) {
         groups[response.taskId] = [];
@@ -408,21 +410,62 @@ export default function TaskResponses() {
       return groups;
     }, {});
 
-    // Sort steps within each task and flatten back to array
-    const sortedResponses = Object.values(groupedResponses).flatMap(taskResponses => {
-      return taskResponses.sort((a, b) => {
-        // Sort by step number, with creation first, then steps, then completion
+    // Convert grouped responses to task-level summaries
+    const taskSummaries = Object.entries(groupedResponses).map(([taskId, taskResponses]) => {
+      // Sort responses within the task
+      const sortedResponses = taskResponses.sort((a, b) => {
         if (a.type === 'creation') return -1;
         if (b.type === 'creation') return 1;
         if (a.type === 'completion') return 1;
         if (b.type === 'completion') return -1;
         return (a.stepNumber || 0) - (b.stepNumber || 0);
       });
+
+      // Get the first response for basic info
+      const firstResponse = sortedResponses[0];
+      
+      // Count different types of responses
+      const stepResponses = sortedResponses.filter(r => r.type !== 'creation' && r.type !== 'completion');
+      const hasAttachments = sortedResponses.some(r => r.fileUrl);
+      const hasTextResponses = sortedResponses.some(r => r.message || r.type === 'text');
+      
+      // Get completion status
+      const completionResponse = sortedResponses.find(r => r.type === 'completion');
+      const isCompleted = !!completionResponse;
+      
+      // Get task info
+      const task = firstResponse.task;
+      const isMultiStep = task && task.steps && task.steps.length > 1;
+      
+      return {
+        id: taskId,
+        taskId: taskId,
+        taskTitle: firstResponse.taskTitle,
+        task: task,
+        responses: sortedResponses,
+        stepCount: stepResponses.length,
+        totalSteps: isMultiStep ? task.steps.length : 1,
+        isMultiStep: isMultiStep,
+        isCompleted: isCompleted,
+        hasAttachments: hasAttachments,
+        hasTextResponses: hasTextResponses,
+        assignmentType: firstResponse.assignmentType,
+        targetAudience: firstResponse.targetAudience,
+        assignees: firstResponse.assignees,
+        completedBy: firstResponse.completedBy,
+        totalAssigned: firstResponse.totalAssigned,
+        totalCompleted: firstResponse.totalCompleted,
+        completionStatus: firstResponse.completionStatus,
+        createdAt: firstResponse.timestamp || firstResponse.createdAt,
+        completedAt: completionResponse?.timestamp || completionResponse?.createdAt,
+        createdBy: firstResponse.createdBy
+      };
     });
 
-    return sortedResponses.sort((a, b) => {
-      const dateA = a.timestamp?.toDate?.() || a.createdAt?.toDate?.() || new Date(a.timestamp || a.createdAt);
-      const dateB = b.timestamp?.toDate?.() || b.createdAt?.toDate?.() || new Date(b.timestamp || b.createdAt);
+    // Sort by creation date (newest first)
+    return taskSummaries.sort((a, b) => {
+      const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt);
+      const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt);
       return dateB - dateA;
     });
   };
@@ -766,239 +809,244 @@ export default function TaskResponses() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Step</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Question</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Answer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attachments</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignment Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion Time</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredResponses.map((response, index) => {
-                const responseType = getResponseType(response);
-                const responseDate = response.timestamp?.toDate?.() || 
-                                   response.createdAt?.toDate?.() || 
-                                   new Date(response.timestamp || response.createdAt);
-                const executionInfo = getTaskExecutionInfo(response.taskId);
-                
-                // Check if this is the first response for this task (for visual grouping)
-                const isFirstResponseForTask = index === 0 || 
-                  filteredResponses[index - 1].taskId !== response.taskId;
-                
-                // Check if this is a multi-step task
-                const task = tasks.find(t => t.id === response.taskId);
-                const isMultiStepTask = task && task.steps && task.steps.length > 1;
-                
-                // Get step progress for multi-step tasks
-                const stepProgress = isMultiStepTask && response.stepNumber ? 
-                  `${response.stepNumber}/${task.steps.length}` : null;
-
-                return (
-                  <tr key={response.id} className={`hover:bg-gray-50 ${
-                    isFirstResponseForTask && isMultiStepTask ? 'border-t-4 border-blue-200' : ''
-                  }`}>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        {response.taskTitle || `Task ${response.taskId}`}
-                      </div>
-                      <div className="text-xs text-gray-500">ID: {response.taskId}</div>
-                      {isMultiStepTask && (
-                        <div className="text-xs text-blue-600 font-medium">
-                          📋 Multi-Step Task ({task.steps.length} steps)
-                        </div>
-                      )}
-                      {executionInfo && (
-                        <div className="text-xs text-gray-400">
-                          Step {executionInfo.currentStep}/{executionInfo.totalSteps}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {response.stepNumber ? (
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            Step {response.stepNumber}
-                            {stepProgress && (
-                              <span className="text-xs text-blue-600 ml-1">
-                                ({stepProgress})
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {response.stepTitle || 'No title'}
-                          </div>
-                          {response.validationStatus && (
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getValidationStatusColor(response.validationStatus)}`}>
-                              {response.validationStatus.toUpperCase()}
-                            </span>
-                          )}
-                          {/* Step progress indicator for multi-step tasks */}
-                          {isMultiStepTask && task.steps && (
-                            <div className="mt-2">
-                              <div className="flex space-x-1">
-                                {task.steps.map((_, stepIndex) => (
-                                  <div
-                                    key={stepIndex}
-                                    className={`h-2 w-2 rounded-full ${
-                                      stepIndex < response.stepNumber ? 'bg-green-500' : 
-                                      stepIndex === response.stepNumber - 1 ? 'bg-blue-500' : 'bg-gray-300'
-                                    }`}
-                                    title={`Step ${stepIndex + 1}`}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500">Single Step</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        responseType === 'attachment' ? 'bg-purple-100 text-purple-800' :
-                        responseType === 'status_update' ? 'bg-orange-100 text-orange-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {responseType.replace('_', ' ').toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs">
-                        {response.question ? (
-                          <div className="font-medium text-gray-700">
-                            {response.question}
-                          </div>
-                        ) : (
-                          <span className="text-gray-500">No question</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs">
-                        {response.message || response.statusUpdate ? (
-                          <div className="text-gray-900">
-                            {response.message || response.statusUpdate}
-                          </div>
-                        ) : (
-                          <span className="text-gray-500">No answer</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {response.fileUrl ? (
-                        <div className="text-xs text-blue-600 hover:text-blue-800">
-                          <a href={response.fileUrl} target="_blank" rel="noopener noreferrer">
-                            📎 {response.type === 'image' ? 'Image' : response.type === 'voice' ? 'Voice Note' : 'File'}
-                          </a>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500">No attachments</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        response.assignmentType === 'team' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
-                      }`}>
-                        {response.assignmentType === 'team' ? 'Team (Anyone)' : 'Individual (Everyone)'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div>
-                        <div className="font-medium">{getAssignmentDisplay(response.task)}</div>
-                        {response.task.assignees && Array.isArray(response.task.assignees) && response.task.assignees.length > 0 && (
-                          <div className="text-xs text-gray-500">
-                            <span>Specific: {response.task.assignees.length} people</span>
-                            <button
-                              onClick={() => {
-                                setSelectedAssignees(response.task.assignees);
-                                setShowAssigneesModal(true);
-                              }}
-                              className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
-                            >
-                              View
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getCompletionStatusColor(response.completionStatus)}`}>
-                          {response.completionStatus}
-                        </span>
-                        {response.totalCompleted > 0 && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            <span>Completed by: {Array.isArray(response.completedBy) ? response.completedBy.length : 1} people</span>
-                            <button
-                              onClick={() => {
-                                setSelectedAssignees(Array.isArray(response.completedBy) ? response.completedBy : [response.completedBy]);
-                                setShowAssigneesModal(true);
-                              }}
-                              className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
-                            >
-                              View
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {response.createdBy || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div>
-                        <div>{responseDate.toLocaleDateString()}</div>
-                        <div className="text-xs text-gray-500">{responseDate.toLocaleTimeString()}</div>
-                        {executionInfo?.totalTime && (
-                          <div className="text-xs text-green-600">
-                            Duration: {formatDuration(executionInfo.totalTime)}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="flex space-x-2">
-                        {response.fileUrl && (
-                          <a
-                            href={response.fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 text-xs"
-                          >
-                            Download
-                          </a>
-                        )}
-                        <button
-                          onClick={() => {
-                            const details = `Task: ${response.taskTitle}\nStep: ${response.stepNumber || 'Single Step'}\nType: ${responseType}\nMessage: ${response.message || response.statusUpdate || ''}\nDate: ${responseDate.toLocaleString()}\nDuration: ${executionInfo?.totalTime ? formatDuration(executionInfo.totalTime) : 'N/A'}`;
-                            navigator.clipboard.writeText(details);
-                          }}
-                          className="text-gray-600 hover:text-gray-800 text-xs"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+                         <thead className="bg-gray-50">
+               <tr>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Steps</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignment Type</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion Status</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+               </tr>
+             </thead>
+                         <tbody className="bg-white divide-y divide-gray-200">
+               {filteredResponses.map((taskSummary, index) => {
+                 const taskDate = taskSummary.createdAt?.toDate?.() || new Date(taskSummary.createdAt);
+                 const completionDate = taskSummary.completedAt?.toDate?.() || new Date(taskSummary.completedAt);
+                 
+                 return (
+                   <tr key={taskSummary.id} className="hover:bg-gray-50">
+                     <td className="px-6 py-4">
+                       <div className="text-sm font-medium text-gray-900">
+                         {taskSummary.taskTitle || `Task ${taskSummary.taskId}`}
+                       </div>
+                       <div className="text-xs text-gray-500">ID: {taskSummary.taskId}</div>
+                       {taskSummary.isMultiStep && (
+                         <div className="text-xs text-blue-600 font-medium">
+                           📋 Multi-Step Task ({taskSummary.totalSteps} steps)
+                         </div>
+                       )}
+                     </td>
+                     <td className="px-6 py-4">
+                       <div className="text-sm font-medium text-gray-900">
+                         {taskSummary.stepCount}/{taskSummary.totalSteps} steps
+                       </div>
+                       <div className="text-xs text-gray-500">
+                         {taskSummary.isMultiStep ? 'Multi-step task' : 'Single step task'}
+                       </div>
+                       {taskSummary.isMultiStep && (
+                         <button
+                           onClick={() => {
+                             setSelectedTaskSteps(taskSummary.responses);
+                             setShowStepsModal(true);
+                           }}
+                           className="mt-1 text-blue-600 hover:text-blue-800 text-xs font-medium"
+                         >
+                           View All Steps
+                         </button>
+                       )}
+                     </td>
+                     <td className="px-6 py-4">
+                       <div className="flex items-center space-x-2">
+                         <div className="w-full bg-gray-200 rounded-full h-2">
+                           <div 
+                             className="bg-green-600 h-2 rounded-full" 
+                             style={{ width: `${taskSummary.totalSteps ? (taskSummary.stepCount / taskSummary.totalSteps) * 100 : 0}%` }}
+                           ></div>
+                         </div>
+                         <span className="text-xs text-gray-500">
+                           {Math.round((taskSummary.stepCount / taskSummary.totalSteps) * 100)}%
+                         </span>
+                       </div>
+                       <div className="text-xs text-gray-500 mt-1">
+                         {taskSummary.hasAttachments && '📎'} {taskSummary.hasTextResponses && '📝'}
+                       </div>
+                     </td>
+                     <td className="px-6 py-4 text-sm text-gray-900">
+                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                         taskSummary.assignmentType === 'team' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                       }`}>
+                         {taskSummary.assignmentType === 'team' ? 'Team (Anyone)' : 'Individual (Everyone)'}
+                       </span>
+                     </td>
+                     <td className="px-6 py-4 text-sm text-gray-900">
+                       <div>
+                         <div className="font-medium">{getAssignmentDisplay(taskSummary.task)}</div>
+                         {taskSummary.assignees && Array.isArray(taskSummary.assignees) && taskSummary.assignees.length > 0 && (
+                           <div className="text-xs text-gray-500">
+                             <span>Specific: {taskSummary.assignees.length} people</span>
+                             <button
+                               onClick={() => {
+                                 setSelectedAssignees(taskSummary.assignees);
+                                 setShowAssigneesModal(true);
+                               }}
+                               className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
+                             >
+                               View
+                             </button>
+                           </div>
+                         )}
+                       </div>
+                     </td>
+                     <td className="px-6 py-4 text-sm text-gray-900">
+                       <div>
+                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getCompletionStatusColor(taskSummary.completionStatus)}`}>
+                           {taskSummary.completionStatus}
+                         </span>
+                         {taskSummary.totalCompleted > 0 && (
+                           <div className="text-xs text-gray-500 mt-1">
+                             <span>Completed by: {Array.isArray(taskSummary.completedBy) ? taskSummary.completedBy.length : 1} people</span>
+                             <button
+                               onClick={() => {
+                                 setSelectedAssignees(Array.isArray(taskSummary.completedBy) ? taskSummary.completedBy : [taskSummary.completedBy]);
+                                 setShowAssigneesModal(true);
+                               }}
+                               className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
+                             >
+                               View
+                             </button>
+                           </div>
+                         )}
+                       </div>
+                     </td>
+                     <td className="px-6 py-4 text-sm text-gray-900">
+                       {taskSummary.createdBy || 'Unknown'}
+                     </td>
+                     <td className="px-6 py-4 text-sm text-gray-900">
+                       <div>
+                         <div>{taskDate.toLocaleDateString()}</div>
+                         <div className="text-xs text-gray-500">{taskDate.toLocaleTimeString()}</div>
+                         {taskSummary.isCompleted && (
+                           <div className="text-xs text-green-600">
+                             Completed: {completionDate.toLocaleDateString()}
+                           </div>
+                         )}
+                       </div>
+                     </td>
+                     <td className="px-6 py-4 text-sm text-gray-900">
+                       <div className="flex space-x-2">
+                         {taskSummary.isMultiStep && (
+                           <button
+                             onClick={() => {
+                               setSelectedTaskSteps(taskSummary.responses);
+                               setShowStepsModal(true);
+                             }}
+                             className="text-blue-600 hover:text-blue-800 text-xs"
+                           >
+                             View Steps
+                           </button>
+                         )}
+                         <button
+                           onClick={() => {
+                             const details = `Task: ${taskSummary.taskTitle}\nSteps: ${taskSummary.stepCount}/${taskSummary.totalSteps}\nStatus: ${taskSummary.completionStatus}\nCreated: ${taskDate.toLocaleString()}\nCompleted: ${taskSummary.isCompleted ? completionDate.toLocaleString() : 'Not completed'}`;
+                             navigator.clipboard.writeText(details);
+                           }}
+                           className="text-gray-600 hover:text-gray-800 text-xs"
+                         >
+                           Copy
+                         </button>
+                       </div>
+                     </td>
+                   </tr>
+                 );
+               })}
+             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Assignees Details Modal */}
-      {showAssigneesModal && selectedAssignees.length > 0 && (
+             {/* Steps Details Modal */}
+       {showStepsModal && selectedTaskSteps.length > 0 && (
+         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-2/3 shadow-lg rounded-md bg-white">
+             <div className="mt-3">
+               <div className="flex justify-between items-center mb-4">
+                 <h3 className="text-lg font-medium text-gray-900">Task Steps & Responses</h3>
+                 <button
+                   onClick={() => setShowStepsModal(false)}
+                   className="text-gray-400 hover:text-gray-600"
+                 >
+                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                   </svg>
+                 </button>
+               </div>
+               
+               <div className="space-y-4">
+                 {selectedTaskSteps.map((response, index) => {
+                   const responseDate = response.timestamp?.toDate?.() || 
+                                      response.createdAt?.toDate?.() || 
+                                      new Date(response.timestamp || response.createdAt);
+                   
+                   return (
+                     <div key={response.id} className="border rounded-lg p-4 bg-gray-50">
+                       <div className="flex items-start justify-between">
+                         <div className="flex-1">
+                           <div className="flex items-center space-x-2 mb-2">
+                             <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
+                               {response.type === 'creation' ? 'Task Created' : 
+                                response.type === 'completion' ? 'Task Completed' : 
+                                `Step ${response.stepNumber}`}
+                             </span>
+                             <span className="text-sm font-medium text-gray-900">
+                               {response.stepTitle || response.type}
+                             </span>
+                           </div>
+                           
+                           <div className="text-sm text-gray-600 mb-2">
+                             {response.message || response.statusUpdate || 'No response content'}
+                           </div>
+                           
+                           <div className="flex items-center space-x-4 text-xs text-gray-500">
+                             <span>By: {response.createdBy}</span>
+                             <span>{responseDate.toLocaleDateString()} {responseDate.toLocaleTimeString()}</span>
+                             {response.fileUrl && (
+                               <a href={response.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                 📎 View Attachment
+                               </a>
+                             )}
+                           </div>
+                         </div>
+                         
+                         <div className="ml-4">
+                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${getValidationStatusColor(response.validationStatus)}`}>
+                             {response.validationStatus?.toUpperCase() || 'COMPLETED'}
+                           </span>
+                         </div>
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
+
+               <div className="flex justify-end space-x-3 pt-4">
+                 <button
+                   onClick={() => setShowStepsModal(false)}
+                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                 >
+                   Close
+                 </button>
+               </div>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Assignees Details Modal */}
+       {showAssigneesModal && selectedAssignees.length > 0 && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
