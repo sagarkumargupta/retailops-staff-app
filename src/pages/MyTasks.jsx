@@ -120,8 +120,74 @@ const MyTasks = () => {
   };
 
   const getTaskStatus = (task) => {
+    // Debug logging
+    console.log('getTaskStatus debug:', {
+      taskId: task.id,
+      taskTitle: task.title,
+      taskStatus: task.status,
+      storeCompletions: task.storeCompletions,
+      completedBy: task.completedBy,
+      userStore: profile?.assignedStore,
+      userEmail: profile?.email
+    });
+    
+    // First check if task has store-specific completions
+    if (task.storeCompletions && profile?.assignedStore) {
+      const userStore = profile.assignedStore;
+      const storeCompletion = task.storeCompletions[userStore];
+      
+      console.log('Store completion check:', {
+        userStore,
+        storeCompletion,
+        assignmentType: task.assignmentType
+      });
+      
+      if (storeCompletion) {
+        // Check if task is complete for this store
+        if (task.assignmentType === 'individual') {
+          // For individual tasks, check if all assignees from this store completed it
+          const storeAssignees = task.assignees?.filter(assigneeEmail => {
+            // For now, assume all assignees are from the same store
+            // In a more complex system, you'd check the actual store assignment
+            return true;
+          }) || [];
+          
+          const storeCompleted = storeCompletion.completedBy?.length || 0;
+          console.log('Individual task completion:', {
+            storeAssignees: storeAssignees.length,
+            storeCompleted,
+            isComplete: storeCompleted >= storeAssignees.length
+          });
+          
+          if (storeCompleted >= storeAssignees.length) {
+            return 'completed';
+          }
+        } else {
+          // Team or regular task: complete if anyone from this store completed it
+          const hasCompletion = storeCompletion.completedBy?.length > 0;
+          console.log('Team task completion:', {
+            completedBy: storeCompletion.completedBy,
+            hasCompletion
+          });
+          
+          if (hasCompletion) {
+            return 'completed';
+          }
+        }
+        
+        // If there's store completion data but not complete, it's in progress
+        return 'in_progress';
+      }
+    }
+    
+    // Fallback to old logic for backward compatibility
     if (task.status === 'completed') return 'completed';
     if (task.status === 'in_progress') return 'in_progress';
+    
+    // Check if user has completed this task (for backward compatibility)
+    if (task.completedBy && Array.isArray(task.completedBy) && task.completedBy.includes(profile?.email)) {
+      return 'completed';
+    }
     
     // Check if overdue
     if (task.deadline) {
