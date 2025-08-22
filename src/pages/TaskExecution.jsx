@@ -311,6 +311,7 @@ export default function TaskExecution() {
       };
       
       const updateData = {
+        status: 'completed', // ✅ ADDED: Set task status to completed
         storeCompletions: {
           ...storeCompletions,
           [userStore]: updatedStoreCompletion

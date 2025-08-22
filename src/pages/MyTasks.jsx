@@ -9,7 +9,7 @@ const MyTasks = () => {
   const { profile } = useUserProfile();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, pending, in_progress, completed, overdue
+  const [filter, setFilter] = useState('pending'); // all, pending, in_progress, completed, overdue
 
   useEffect(() => {
     loadData();
