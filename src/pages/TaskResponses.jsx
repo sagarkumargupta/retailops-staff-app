@@ -17,6 +17,8 @@ export default function TaskResponses() {
     completedBy: 'all',
     assignmentType: 'all'
   });
+  const [showAssigneesModal, setShowAssigneesModal] = useState(false);
+  const [selectedAssignees, setSelectedAssignees] = useState([]);
 
   useEffect(() => {
     if (profile) {
@@ -915,7 +917,16 @@ export default function TaskResponses() {
                         <div className="font-medium">{getAssignmentDisplay(response.task)}</div>
                         {response.task.assignees && Array.isArray(response.task.assignees) && response.task.assignees.length > 0 && (
                           <div className="text-xs text-gray-500">
-                            Specific: {response.task.assignees.join(', ')}
+                            <span>Specific: {response.task.assignees.length} people</span>
+                            <button
+                              onClick={() => {
+                                setSelectedAssignees(response.task.assignees);
+                                setShowAssigneesModal(true);
+                              }}
+                              className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
+                            >
+                              View
+                            </button>
                           </div>
                         )}
                       </div>
@@ -927,7 +938,16 @@ export default function TaskResponses() {
                         </span>
                         {response.totalCompleted > 0 && (
                           <div className="text-xs text-gray-500 mt-1">
-                            Completed by: {Array.isArray(response.completedBy) ? response.completedBy.join(', ') : response.completedBy}
+                            <span>Completed by: {Array.isArray(response.completedBy) ? response.completedBy.length : 1} people</span>
+                            <button
+                              onClick={() => {
+                                setSelectedAssignees(Array.isArray(response.completedBy) ? response.completedBy : [response.completedBy]);
+                                setShowAssigneesModal(true);
+                              }}
+                              className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
+                            >
+                              View
+                            </button>
                           </div>
                         )}
                       </div>
@@ -976,6 +996,66 @@ export default function TaskResponses() {
           </table>
         </div>
       </div>
+
+      {/* Assignees Details Modal */}
+      {showAssigneesModal && selectedAssignees.length > 0 && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Staff Members</h3>
+                <button
+                  onClick={() => setShowAssigneesModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Staff List ({selectedAssignees.length} people)</h5>
+                  <div className="max-h-64 overflow-y-auto border rounded">
+                    {selectedAssignees.map((email, index) => (
+                      <div 
+                        key={email} 
+                        className="p-3 border-b last:border-b-0 bg-white"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center">
+                              <span className="text-sm font-medium text-gray-900">
+                                {email}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Staff Member #{index + 1}
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <span className="text-blue-600 text-sm">👤</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    onClick={() => setShowAssigneesModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

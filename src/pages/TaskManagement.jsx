@@ -13,8 +13,9 @@ export default function TaskManagement() {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showAssigneesModal, setShowAssigneesModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
 
   // Task form state
   const [taskForm, setTaskForm] = useState({
@@ -1233,11 +1234,22 @@ export default function TaskManagement() {
                 <div>
                   <span className="text-sm font-medium text-gray-500">Assigned To:</span>
                   <div className="mt-1">
-                    {selectedTask.assignees?.map(email => (
-                      <div key={email} className="text-sm text-gray-900">
-                        {email} {selectedTask.completedBy?.includes(email) && '(Completed)'}
-                      </div>
-                    ))}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-900">
+                        {selectedTask.assignees?.length || 0} people assigned
+                        {selectedTask.completedBy?.length > 0 && (
+                          <span className="text-green-600 ml-2">
+                            ({selectedTask.completedBy.length} completed)
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() => setShowAssigneesModal(true)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View Details
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1293,6 +1305,111 @@ export default function TaskManagement() {
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
                     onClick={() => setShowDetailsModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assignees Details Modal */}
+      {showAssigneesModal && selectedTask && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Task Assignees</h3>
+                <button
+                  onClick={() => setShowAssigneesModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <h4 className="font-medium text-gray-900 mb-2">{selectedTask.title}</h4>
+                <p className="text-sm text-gray-600">{selectedTask.description}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Assignment Summary</h5>
+                  <div className="bg-gray-50 p-3 rounded">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Total Assigned:</span>
+                        <span className="ml-2 font-medium">{selectedTask.assignees?.length || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Completed:</span>
+                        <span className="ml-2 font-medium text-green-600">{selectedTask.completedBy?.length || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Pending:</span>
+                        <span className="ml-2 font-medium text-orange-600">
+                          {(selectedTask.assignees?.length || 0) - (selectedTask.completedBy?.length || 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Type:</span>
+                        <span className="ml-2 font-medium">
+                          {selectedTask.assignmentType === 'team' ? 'Team Task' : 'Individual Task'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Assigned Staff</h5>
+                  <div className="max-h-64 overflow-y-auto border rounded">
+                    {selectedTask.assignees?.map((email, index) => {
+                      const isCompleted = selectedTask.completedBy?.includes(email);
+                      return (
+                        <div 
+                          key={email} 
+                          className={`p-3 border-b last:border-b-0 flex items-center justify-between ${
+                            isCompleted ? 'bg-green-50' : 'bg-white'
+                          }`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center">
+                              <span className="text-sm font-medium text-gray-900">
+                                {email}
+                              </span>
+                              {isCompleted && (
+                                <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                                  Completed
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Staff Member #{index + 1}
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            {isCompleted ? (
+                              <span className="text-green-600 text-sm">✅</span>
+                            ) : (
+                              <span className="text-orange-600 text-sm">⏳</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    onClick={() => setShowAssigneesModal(false)}
                     className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
                     Close
