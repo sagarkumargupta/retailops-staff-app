@@ -344,6 +344,19 @@ export default function RokarTab() {
             <p className="text-yellow-700">{stores.find(s => s.id === selectedStore)?.name}</p>
           </div>
 
+          {/* Prayer Section */}
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="text-center">
+              {/* Sanskrit Prayer */}
+              <div className="text-center">
+                <p className="text-lg font-bold text-orange-800 mb-1">ॐ श्री गणेशाय नमः</p>
+                <p className="text-sm text-orange-700 mb-1">लक्ष्मी जी सदा सहाय</p>
+                <p className="text-xs text-orange-600">Om Shri Ganeshaya Namah</p>
+                <p className="text-xs text-orange-600">Lakshmi Ji Sada Sahay</p>
+              </div>
+            </div>
+          </div>
+
           {/* Opening Balance */}
           <div className="mb-4 p-3 bg-yellow-100 rounded">
             <h3 className="font-bold text-yellow-800">Opening Balance / आरंभिक शेष</h3>
@@ -426,6 +439,26 @@ export default function RokarTab() {
               </div>
             </div>
           </div>
+
+          {/* Other Expenses */}
+          {rokarData.otherExpenseDetails && rokarData.otherExpenseDetails.length > 0 && (
+            <div className="mb-4">
+              <h3 className="font-bold text-purple-800 mb-2">Other Expenses / अन्य खर्च</h3>
+              <div className="space-y-1 text-sm">
+                {rokarData.otherExpenseDetails.map((detail, index) => (
+                  <div key={index} className="flex justify-between">
+                    <span>{detail}</span>
+                  </div>
+                ))}
+                <div className="border-t pt-1">
+                  <div className="flex justify-between font-bold">
+                    <span>Total Other Expenses:</span>
+                    <span>{formatCurrency(rokarData.otherExpenseTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Staff Salary */}
           <div className="mb-4">

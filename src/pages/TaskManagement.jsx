@@ -7,7 +7,7 @@ import { auth } from '../firebase';
 
 export default function TaskManagement() {
   const [user] = useAuthState(auth);
-  const { profile } = useUserProfile();
+  const { profile, getStoresForFiltering } = useUserProfile();
   const [tasks, setTasks] = useState([]);
   const [stores, setStores] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -224,18 +224,33 @@ export default function TaskManagement() {
       
       setStores(storesList);
 
-      // Load staff for all stores
+      // Load staff for all accessible stores
       const allStaff = [];
-      for (const store of storesList) {
-        const staffSnap = await getDocs(collection(db, 'stores', store.id, 'staff'));
-        const storeStaff = staffSnap.docs.map(doc => ({ 
-          id: doc.id, 
-          storeId: store.id, 
-          storeName: store.name,
-          ...doc.data() 
-        }));
-        allStaff.push(...storeStaff);
+      const accessibleStores = getStoresForFiltering();
+      
+      if (accessibleStores.length > 0) {
+        // User has specific store access - load staff for those stores
+        const staffSnap = await getDocs(collection(db, 'users'));
+        const allUsers = staffSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Filter staff for the stores the user can access
+        const filteredStaff = allUsers.filter(user => 
+          user.role === 'STAFF' && 
+          user.assignedStore && 
+          accessibleStores.includes(user.assignedStore)
+        );
+        
+        allStaff.push(...filteredStaff);
+      } else {
+        // Admin/Owner can access all stores - load all staff
+        const staffSnap = await getDocs(collection(db, 'users'));
+        const allUsers = staffSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Filter only staff users
+        const filteredStaff = allUsers.filter(user => user.role === 'STAFF');
+        allStaff.push(...filteredStaff);
       }
+      
       setStaff(allStaff);
 
       // Load tasks
@@ -293,17 +308,26 @@ export default function TaskManagement() {
   const handleCreateTask = async (e) => {
     e.preventDefault();
     try {
-      const taskData = {
+      // Ensure tags is always an array
+      const sanitizedTaskForm = {
         ...taskForm,
+        tags: Array.isArray(taskForm.tags) ? taskForm.tags : [],
+        steps: Array.isArray(taskForm.steps) ? taskForm.steps : [],
+        assignees: Array.isArray(taskForm.assignees) ? taskForm.assignees : []
+      };
+
+      const taskData = {
+        ...sanitizedTaskForm,
         createdBy: user.email,
         createdByRole: profile.role,
         createdAt: serverTimestamp(),
         status: 'pending',
         completedBy: [],
+        storeCompletions: {}, // Initialize store-specific completion tracking
         assignedStores: getAssignedStores(),
         assignees: getAssignees(),
         // Maintain backward compatibility with assignTo field
-        assignTo: taskForm.targetAudience
+        assignTo: sanitizedTaskForm.targetAudience
       };
 
       await addDoc(collection(db, 'tasks'), taskData);
@@ -375,11 +399,44 @@ export default function TaskManagement() {
 
   const updateTaskStatus = async (taskId, status) => {
     try {
-      await updateDoc(doc(db, 'tasks', taskId), {
-        status,
-        updatedAt: serverTimestamp(),
-        updatedBy: user.email
-      });
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      const userStore = profile.assignedStore;
+      
+      // For store-specific tracking, update the store completion instead of global status
+      if (userStore && task.storeCompletions) {
+        const storeCompletions = task.storeCompletions || {};
+        const currentStoreCompletion = storeCompletions[userStore] || {
+          completedBy: [],
+          completedAt: null
+        };
+        
+        // Update store-specific completion based on status
+        const updatedStoreCompletion = {
+          ...currentStoreCompletion,
+          status: status,
+          updatedAt: serverTimestamp(),
+          updatedBy: user.email
+        };
+        
+        await updateDoc(doc(db, 'tasks', taskId), {
+          storeCompletions: {
+            ...storeCompletions,
+            [userStore]: updatedStoreCompletion
+          },
+          updatedAt: serverTimestamp(),
+          updatedBy: user.email
+        });
+      } else {
+        // Fallback to global status update
+        await updateDoc(doc(db, 'tasks', taskId), {
+          status,
+          updatedAt: serverTimestamp(),
+          updatedBy: user.email
+        });
+      }
+      
       await loadTasks();
     } catch (error) {
       console.error('Error updating task:', error);
@@ -389,30 +446,62 @@ export default function TaskManagement() {
   const markTaskComplete = async (taskId) => {
     try {
       const task = tasks.find(t => t.id === taskId);
-      const completedBy = task.completedBy || [];
+      if (!task) return;
+
+      const userStore = profile.assignedStore;
       
+      // Handle store-specific completion tracking
+      const storeCompletions = task.storeCompletions || {};
+      const currentStoreCompletion = storeCompletions[userStore] || {
+        completedBy: [],
+        completedAt: null
+      };
+      
+      // Add current user to store completion if not already there
+      if (!currentStoreCompletion.completedBy.includes(user.email)) {
+        currentStoreCompletion.completedBy.push(user.email);
+      }
+      
+      // Update store-specific completion
+      const updatedStoreCompletions = {
+        ...storeCompletions,
+        [userStore]: {
+          ...currentStoreCompletion,
+          completedAt: serverTimestamp()
+        }
+      };
+      
+      // Keep backward compatibility with global completion tracking
+      const completedBy = task.completedBy || [];
       if (!completedBy.includes(user.email)) {
         completedBy.push(user.email);
       }
 
       let newStatus = task.status;
       
-      // Check if task is complete based on assignment type
+      // Check if task is complete based on assignment type and store
       if (task.assignmentType === 'team') {
-        // Team task: complete if anyone completes it
+        // Team task: complete if anyone from the store completes it
         newStatus = 'completed';
       } else if (task.assignmentType === 'individual') {
-        // Individual task: complete only if everyone assigned has completed it
-        const allAssigned = task.assignees || [];
-        const allCompleted = completedBy.length >= allAssigned.length;
-        newStatus = allCompleted ? 'completed' : 'in_progress';
+        // Individual task: check completion for this specific store
+        // Filter assignees for this specific store
+        const storeAssignees = task.assignees?.filter(assigneeEmail => {
+          // Find the staff member and check if they belong to this store
+          const staffMember = staff.find(s => s.email === assigneeEmail);
+          return staffMember && staffMember.assignedStore === userStore;
+        }) || [];
+        
+        const storeCompleted = currentStoreCompletion.completedBy.length >= storeAssignees.length;
+        newStatus = storeCompleted ? 'completed' : 'in_progress';
       } else {
-        // Regular task: complete if anyone completes it
+        // Regular task: complete if anyone from the store completes it
         newStatus = 'completed';
       }
 
       await updateDoc(doc(db, 'tasks', taskId), {
-        completedBy,
+        storeCompletions: updatedStoreCompletions,
+        completedBy, // Keep backward compatibility
         status: newStatus,
         updatedAt: serverTimestamp(),
         updatedBy: user.email
@@ -429,6 +518,34 @@ export default function TaskManagement() {
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'low': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getEffectiveTaskStatus = (task, userStore) => {
+    // If no store-specific completion tracking, use global status
+    if (!task.storeCompletions || !userStore) {
+      return task.status;
+    }
+    
+    const storeCompletion = task.storeCompletions[userStore];
+    if (!storeCompletion) {
+      return 'pending'; // Not started for this store
+    }
+    
+    // Check if task is complete for this store
+    if (task.assignmentType === 'individual') {
+      // Filter assignees for this specific store
+      const storeAssignees = task.assignees?.filter(assigneeEmail => {
+        // Find the staff member and check if they belong to this store
+        const staffMember = staff.find(s => s.email === assigneeEmail);
+        return staffMember && staffMember.assignedStore === userStore;
+      }) || [];
+      
+      const storeCompleted = storeCompletion.completedBy?.length || 0;
+      return storeCompleted >= storeAssignees.length ? 'completed' : 'in_progress';
+    } else {
+      // Team or regular task: complete if anyone from this store completed it
+      return storeCompletion.completedBy?.length > 0 ? 'completed' : 'in_progress';
     }
   };
 
@@ -462,7 +579,7 @@ export default function TaskManagement() {
       category: template.category,
       priority: template.priority,
       estimatedHours: template.estimatedHours,
-      tags: template.tags,
+      tags: Array.isArray(template.tags) ? template.tags : [],
       assignmentType: template.assignmentType,
       targetAudience: template.targetAudience,
       hasSteps: template.hasSteps || false,
@@ -496,15 +613,21 @@ export default function TaskManagement() {
       {/* Task Statistics */}
       <div className="grid md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-2xl font-bold text-blue-600">{tasks.filter(t => t.status === 'pending').length}</div>
+          <div className="text-2xl font-bold text-blue-600">
+            {tasks.filter(t => getEffectiveTaskStatus(t, profile?.assignedStore) === 'pending').length}
+          </div>
           <div className="text-sm text-gray-600">Pending Tasks</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-2xl font-bold text-yellow-600">{tasks.filter(t => t.status === 'in_progress').length}</div>
+          <div className="text-2xl font-bold text-yellow-600">
+            {tasks.filter(t => getEffectiveTaskStatus(t, profile?.assignedStore) === 'in_progress').length}
+          </div>
           <div className="text-sm text-gray-600">In Progress</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-2xl font-bold text-green-600">{tasks.filter(t => t.status === 'completed').length}</div>
+          <div className="text-2xl font-bold text-green-600">
+            {tasks.filter(t => getEffectiveTaskStatus(t, profile?.assignedStore) === 'completed').length}
+          </div>
           <div className="text-sm text-gray-600">Completed</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
@@ -597,21 +720,49 @@ export default function TaskManagement() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(task.status)}`}>
-                      {task.status.replace('_', ' ').toUpperCase()}
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(getEffectiveTaskStatus(task, profile?.assignedStore))}`}>
+                      {getEffectiveTaskStatus(task, profile?.assignedStore).replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
                     {task.assignees?.length || 0} people
                     {task.assignmentType === 'individual' && (
                       <div className="text-xs text-gray-500 mt-1">
-                        {task.completedBy?.length || 0}/{task.assignees?.length || 0} completed
-                        <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
-                          <div 
-                            className="bg-green-600 h-1 rounded-full" 
-                            style={{ width: `${task.assignees?.length ? ((task.completedBy?.length || 0) / task.assignees.length) * 100 : 0}%` }}
-                          ></div>
-                        </div>
+                        {/* Show store-specific completion if available */}
+                        {task.storeCompletions && profile?.assignedStore ? (
+                          (() => {
+                            const storeCompletion = task.storeCompletions[profile.assignedStore];
+                            const storeCompletedCount = storeCompletion?.completedBy?.length || 0;
+                            // Filter assignees for this specific store
+                            const storeAssignees = task.assignees?.filter(assigneeEmail => {
+                              const staffMember = staff.find(s => s.email === assigneeEmail);
+                              return staffMember && staffMember.assignedStore === profile.assignedStore;
+                            }) || [];
+                            const storeAssigneesCount = storeAssignees.length;
+                            return (
+                              <>
+                                {storeCompletedCount}/{storeAssigneesCount} completed (this store)
+                                <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                                  <div 
+                                    className="bg-green-600 h-1 rounded-full" 
+                                    style={{ width: `${storeAssigneesCount ? (storeCompletedCount / storeAssigneesCount) * 100 : 0}%` }}
+                                  ></div>
+                                </div>
+                              </>
+                            );
+                          })()
+                        ) : (
+                          // Fallback to global completion tracking
+                          <>
+                            {task.completedBy?.length || 0}/{task.assignees?.length || 0} completed
+                            <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                              <div 
+                                className="bg-green-600 h-1 rounded-full" 
+                                style={{ width: `${task.assignees?.length ? ((task.completedBy?.length || 0) / task.assignees.length) * 100 : 0}%` }}
+                              ></div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </td>
@@ -634,7 +785,7 @@ export default function TaskManagement() {
                           Execute
                         </button>
                       )}
-                      {task.status === 'pending' && (
+                      {getEffectiveTaskStatus(task, profile?.assignedStore) === 'pending' && (
                         <button
                           onClick={() => updateTaskStatus(task.id, 'in_progress')}
                           className="text-yellow-600 hover:text-yellow-900"
@@ -642,7 +793,7 @@ export default function TaskManagement() {
                           Start
                         </button>
                       )}
-                      {task.status === 'in_progress' && !task.hasSteps && (
+                      {getEffectiveTaskStatus(task, profile?.assignedStore) === 'in_progress' && !task.hasSteps && (
                         <button
                           onClick={() => markTaskComplete(task.id)}
                           className="text-green-600 hover:text-green-900"

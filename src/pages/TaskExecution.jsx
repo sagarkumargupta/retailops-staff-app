@@ -292,16 +292,38 @@ export default function TaskExecution() {
       }
 
       // Update task with completion data
+      const userStore = profile.assignedStore;
+      
+      // Create store-specific completion tracking
+      const storeCompletions = task.storeCompletions || {};
+      const currentStoreCompletion = storeCompletions[userStore] || {
+        completedBy: [],
+        completedAt: null,
+        stepValidations: {}
+      };
+      
+      // Update the store-specific completion
+      const updatedStoreCompletion = {
+        ...currentStoreCompletion,
+        completedBy: [...currentStoreCompletion.completedBy, profile.email],
+        completedAt: serverTimestamp(),
+        stepValidations: stepValidations
+      };
+      
       const updateData = {
-        status: 'completed',
+        storeCompletions: {
+          ...storeCompletions,
+          [userStore]: updatedStoreCompletion
+        },
+        // Keep backward compatibility with global completion tracking
         completedBy: [...(task.completedBy || []), profile.email],
         stepValidations: stepValidations,
         completedAt: serverTimestamp(),
         completedByUser: profile.email,
-        storeId: profile.storeId || profile.assignedStore || null
+        storeId: userStore
       };
 
-      console.log('Updating task with data:', updateData);
+      console.log('Updating task with store-specific completion data:', updateData);
       
       await updateDoc(doc(db, 'tasks', taskId), updateData);
 
@@ -323,7 +345,14 @@ export default function TaskExecution() {
 
   const renderValidationComponent = (step) => {
     const validation = stepValidations[currentStep];
-    const method = step.validationMethod;
+    const method = step.validationMethod || 'none'; // Default to 'none' if undefined
+    
+    console.log('Validation component debug:', {
+      step,
+      method,
+      validation,
+      currentStep
+    });
 
     switch (method) {
       case 'image':
@@ -436,10 +465,33 @@ export default function TaskExecution() {
           </div>
         );
 
+      case 'none':
       default:
         return (
-          <div className="text-gray-500">
-            No validation required for this step
+          <div className="space-y-4">
+            <div className="text-gray-500 mb-4">
+              No validation required for this step
+            </div>
+            <button
+              onClick={() => {
+                setStepValidations(prev => ({
+                  ...prev,
+                  [currentStep]: {
+                    completed: true,
+                    validation: { type: 'none', message: 'No validation required' },
+                    timestamp: new Date(),
+                    submittedBy: user.email
+                  }
+                }));
+              }}
+              className={`px-4 py-2 rounded ${
+                validation?.completed
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {validation?.completed ? '✅ Step Completed' : '✓ Mark Step as Complete'}
+            </button>
           </div>
         );
     }
@@ -571,43 +623,49 @@ export default function TaskExecution() {
 
               {/* Step Navigation */}
               <div className="flex justify-between pt-6 border-t">
-                <button
-                  onClick={prevStep}
-                  disabled={currentStep === 0}
-                  className={`px-4 py-2 rounded ${
-                    currentStep === 0
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  ← Previous Step
-                </button>
+                <div className="text-sm text-gray-500">
+                  Step {currentStep + 1} of {task.steps.length} - 
+                  {stepValidations[currentStep]?.completed ? ' ✅ Completed' : ' ⏳ Pending'}
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={prevStep}
+                    disabled={currentStep === 0}
+                    className={`px-4 py-2 rounded ${
+                      currentStep === 0
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    ← Previous Step
+                  </button>
 
-                {currentStep < task.steps.length - 1 ? (
-                  <button
-                    onClick={nextStep}
-                    disabled={!stepValidations[currentStep]?.completed}
-                    className={`px-4 py-2 rounded ${
-                      !stepValidations[currentStep]?.completed
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                  >
-                    Next Step →
-                  </button>
-                ) : (
-                  <button
-                    onClick={completeTask}
-                    disabled={!stepValidations[currentStep]?.completed || submitting}
-                    className={`px-4 py-2 rounded ${
-                      !stepValidations[currentStep]?.completed || submitting
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    {submitting ? 'Completing...' : 'Complete Task'}
-                  </button>
-                )}
+                  {currentStep < task.steps.length - 1 ? (
+                    <button
+                      onClick={nextStep}
+                      disabled={!stepValidations[currentStep]?.completed}
+                      className={`px-4 py-2 rounded ${
+                        !stepValidations[currentStep]?.completed
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      Next Step →
+                    </button>
+                  ) : (
+                    <button
+                      onClick={completeTask}
+                      disabled={!stepValidations[currentStep]?.completed || submitting}
+                      className={`px-4 py-2 rounded ${
+                        !stepValidations[currentStep]?.completed || submitting
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                    >
+                      {submitting ? 'Completing...' : 'Complete Task'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ) : (

@@ -1,26 +1,36 @@
 {
   "project_info": {
-    "project_number": "123456789000",
+    "project_number": "381257088873",
     "project_id": "retailopsapp",
     "storage_bucket": "retailopsapp.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789000:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:381257088873:android:6a2c28a70dc16b65b547f8",
         "android_client_info": {
           "package_name": "com.retailops.staff"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "381257088873-6a2c28a70dc16b65b547f8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyC-placeholder-key-for-development"
+          "current_key": "AIzaSyBOe0c22Tug8CoWenydHGxgkP6iPM_VLfI"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "381257088873-6a2c28a70dc16b65b547f8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

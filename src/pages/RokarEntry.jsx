@@ -54,6 +54,7 @@ export default function RokarEntry() {
   // Other Expense (auto-filled from approved requests)
   const [otherExpenseTotal, setOtherExpenseTotal] = useState(0);
   const [otherExpenseSource, setOtherExpenseSource] = useState('');
+  const [otherExpenseDetails, setOtherExpenseDetails] = useState([]);
 
   // Existing doc detection
   const [existing, setExisting] = useState(null);
@@ -208,6 +209,7 @@ export default function RokarEntry() {
           });
           console.log('RokarEntry: Total expenses found for store', storeId, ':', expenseDetails.length, 'Total amount:', totalExpense);
           setOtherExpenseTotal(totalExpense);
+          setOtherExpenseDetails(expenseDetails);
           setOtherExpenseSource(expenseDetails.length > 0 ? `Auto from ${expenseDetails.length} approved request(s)` : 'No approved expenses');
         } catch (error) {
           console.error('RokarEntry: Error loading expenses:', error);
@@ -427,6 +429,7 @@ export default function RokarEntry() {
         expenseBreakup: Object.fromEntries(Object.entries(expenseBreakup).map(([k, v]) => [k, clean(v)])),
         expenseTotal: expenseTotal,
         otherExpenseTotal: otherExpenseTotal,
+        otherExpenseDetails: otherExpenseDetails,
         staffSalaryTotal: clean(staffSalaryTotal),
         closingBalance: closingBalance,
         cashBreakdown: Object.fromEntries(Object.entries(cashBreakdown).map(([k, v]) => [k, clean(v)])),

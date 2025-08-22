@@ -57,7 +57,39 @@ export default function TrainingManagement() {
   const loadStaff = async () => {
     try {
       const staffSnap = await getDocs(collection(db, 'users'));
-      const staffList = staffSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let staffList = staffSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Filter staff based on user role
+      if (profile?.role === 'MANAGER') {
+        // For managers, only show staff from their assigned stores
+        const managerStoreIds = [];
+        
+        // Add assigned store if exists
+        if (profile.assignedStore) {
+          managerStoreIds.push(profile.assignedStore);
+        }
+        
+        // Add stores from profile.stores object if exists
+        if (profile.stores && typeof profile.stores === 'object') {
+          const storeIds = Object.keys(profile.stores).filter(key => profile.stores[key] === true);
+          managerStoreIds.push(...storeIds);
+        }
+        
+        // Filter staff to only those assigned to manager's stores
+        staffList = staffList.filter(staff => 
+          staff.role === 'STAFF' && 
+          managerStoreIds.includes(staff.assignedStore)
+        );
+      } else if (profile?.role === 'STAFF') {
+        // For staff, only show themselves
+        staffList = staffList.filter(staff => 
+          staff.email === profile.email
+        );
+      } else if (profile?.role === 'ADMIN' || profile?.role === 'OWNER' || profile?.role === 'SUPER_ADMIN') {
+        // For admin roles, show all staff
+        staffList = staffList.filter(staff => staff.role === 'STAFF');
+      }
+      
       setStaff(staffList);
     } catch (error) {
       console.error('Error loading staff:', error);

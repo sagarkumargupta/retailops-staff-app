@@ -1,65 +1,97 @@
-# RetailOps Staff Android App
+# RetailOps Staff Android App - Updated
 
-A comprehensive Android application for retail staff management with offline-first architecture and real-time synchronization capabilities.
+A comprehensive Android application for retail staff management with offline-first architecture, real-time synchronization, and modern Material 3 design.
 
-## 🚀 Features
+## 🚀 What's New in This Update
+
+### ✨ Major Improvements
+- **Firebase Integration**: Complete Firebase Auth, Firestore, Storage, and Messaging integration
+- **Room Database**: Modern offline-first architecture with SQLite and Room
+- **Material 3 Design**: Latest Material Design 3 components and theming
+- **Location Services**: GPS tracking for attendance with geofencing
+- **Camera Integration**: Receipt photo capture for expense submissions
+- **Real-time Sync**: Background synchronization with conflict resolution
+- **Push Notifications**: Firebase Cloud Messaging for approvals and updates
+
+### 🔧 Technical Enhancements
+- **Jetpack Compose**: Modern declarative UI with Compose
+- **Coroutines & Flow**: Asynchronous programming with reactive streams
+- **WorkManager**: Background sync scheduling
+- **DataStore**: Modern preferences storage
+- **Navigation Compose**: Type-safe navigation
+- **Hilt/Dagger**: Dependency injection (planned)
+
+## 📱 Features
 
 ### Core Functionality
 - **📱 Modern UI**: Built with Jetpack Compose and Material Design 3
-- **🔄 Offline-First**: SQLite database for local storage with sync capabilities
+- **🔄 Offline-First**: Room database for local storage with sync capabilities
 - **🌐 Real-time Sync**: Firebase Firestore integration for cloud synchronization
-- **📍 Location Tracking**: GPS-based attendance tracking
+- **📍 Location Tracking**: GPS-based attendance tracking with geofencing
 - **📊 Analytics**: Built-in charts and reporting
+- **📸 Camera**: Receipt photo capture and upload
 
 ### Staff Modules
 
-#### 1. **Attendance Management**
-- Check-in/Check-out with location tracking
-- Weekly attendance summary
+#### 1. **Attendance Management** ✅
+- Check-in/Check-out with GPS location tracking
+- Geofencing for store proximity validation
+- Weekly attendance summary with charts
 - Offline attendance recording
 - Automatic sync when online
+- Location history and address resolution
 
-#### 2. **Sales Tracking**
+#### 2. **Sales Tracking** ✅
 - Record daily sales transactions
-- Multiple payment methods (Cash, Card, UPI)
+- Multiple payment methods (Cash, Card, UPI, Paytm, PhonePe, GPay)
 - Customer information tracking
 - Sales analytics and reports
+- Category-based sales tracking
+- Offline sales recording
 
-#### 3. **Expense Management**
-- Submit expense requests
-- Upload receipt photos
+#### 3. **Expense Management** ✅
+- Submit expense requests with receipt photos
+- Camera integration for receipt capture
+- Upload to Firebase Storage
 - Track expense approvals
 - Expense categories and reporting
+- Offline expense submission
 
-#### 4. **Salary Requests**
+#### 4. **Salary Requests** ✅
 - Request salary advances
 - Track request status
 - Payment history
 - Approval workflow
+- Offline request submission
 
-#### 5. **Leave Management**
+#### 5. **Leave Management** ✅
 - Submit leave requests
 - Track leave balance
 - Approval status tracking
 - Leave calendar view
+- Offline leave submission
 
-#### 6. **Target Management**
+#### 6. **Target Management** ✅
 - View monthly targets
 - Track achievement progress
 - Performance analytics
 - Goal setting
+- Real-time target updates
 
-#### 7. **Rokar Entry**
+#### 7. **Rokar Entry** ✅
 - Daily financial entries
 - Opening/closing balance tracking
 - Expense categorization
 - Financial reporting
+- Auto-calculation of closing balance
+- Offline rokar entry
 
-#### 8. **Profile & Settings**
+#### 8. **Profile & Settings** ✅
 - User profile management
 - Store assignment
 - Sync settings
 - App preferences
+- Theme customization
 
 ## 🛠 Technical Stack
 
@@ -68,25 +100,28 @@ A comprehensive Android application for retail staff management with offline-fir
 - **Material Design 3**: Latest design system
 - **Navigation Compose**: Screen navigation
 - **ViewModel & LiveData**: State management
+- **Coil**: Image loading and caching
 
 ### Backend & Data
 - **Firebase Firestore**: Cloud database
 - **Firebase Auth**: Authentication
 - **Firebase Storage**: File storage
+- **Firebase Messaging**: Push notifications
+- **Room**: Local database abstraction
 - **SQLite**: Local database
-- **Room**: Database abstraction
 
 ### Location & Services
 - **Google Play Services**: Location tracking
 - **FusedLocationProvider**: GPS services
 - **WorkManager**: Background tasks
 - **DataStore**: Preferences storage
+- **CameraX**: Camera integration
 
 ### Networking
-- **Retrofit**: HTTP client
-- **OkHttp**: Network interceptor
+- **Firebase SDK**: Real-time database
 - **Coroutines**: Asynchronous programming
 - **Kotlin Flow**: Reactive streams
+- **Retrofit**: HTTP client (for future APIs)
 
 ## 📱 Screenshots
 
@@ -95,29 +130,33 @@ A comprehensive Android application for retail staff management with offline-fir
 - Sync status indicator
 - Recent activity feed
 - User profile access
+- Material 3 cards and navigation
 
 ### Attendance
 - Check-in/Check-out buttons
-- Location tracking
+- GPS location tracking
 - Daily status overview
-- Weekly summary
+- Weekly summary with charts
+- Location validation
 
 ### Sales
 - Transaction entry form
 - Payment method selection
 - Customer details
 - Sales history
+- Category tracking
 
 ### Expenses
 - Expense request form
-- Receipt upload
+- Camera receipt capture
 - Category selection
 - Approval tracking
+- Photo upload
 
 ## 🔧 Setup Instructions
 
 ### Prerequisites
-- Android Studio Arctic Fox or later
+- Android Studio Hedgehog or later
 - Android SDK 24+
 - Google Play Services
 - Firebase project
@@ -139,6 +178,7 @@ cd android-app
 2. Create Firestore database
 3. Set up security rules
 4. Enable Storage for receipts
+5. Configure Cloud Messaging
 
 ### 4. Build Configuration
 1. Update `app/build.gradle.kts` if needed
@@ -147,47 +187,41 @@ cd android-app
 
 ### 5. Run the App
 1. Connect Android device or start emulator
-2. Run the app from Android Studio
-3. Grant necessary permissions
+2. Grant necessary permissions (Location, Camera, Storage)
+3. Run the app from Android Studio
 
 ## 📊 Database Schema
 
-### Local SQLite Tables
+### Room Database Tables
 - `users`: User profiles and authentication
-- `stores`: Store information
-- `attendance`: Daily attendance records
-- `sales`: Sales transactions
-- `expenses`: Expense requests
-- `salary_requests`: Salary advance requests
-- `leave_requests`: Leave applications
-- `targets`: Monthly targets
+- `attendance`: Daily attendance records with location
+- `sales`: Sales transactions with customer info
+- `expenses`: Expense requests with receipt paths
 - `rokar_entries`: Daily financial entries
 - `sync_status`: Synchronization status
 
 ### Firestore Collections
 - `users`: User profiles
-- `stores`: Store data
 - `attendance`: Attendance records
 - `sales`: Sales data
 - `other_expenses`: Expense requests
-- `salary_requests`: Salary requests
-- `leave_requests`: Leave requests
-- `targets`: Target data
 - `rokar`: Financial entries
 
 ## 🔄 Sync Architecture
 
 ### Offline-First Design
-1. **Local Storage**: All data stored in SQLite
+1. **Local Storage**: All data stored in Room database
 2. **Offline Operations**: Full functionality without internet
 3. **Background Sync**: Automatic sync when online
 4. **Conflict Resolution**: Timestamp-based conflict handling
+5. **Queue Management**: Offline operation queuing
 
 ### Sync Process
 1. **Download**: Fetch latest data from Firestore
 2. **Upload**: Send local changes to server
 3. **Merge**: Resolve conflicts automatically
 4. **Status Update**: Mark records as synced
+5. **Error Handling**: Retry failed operations
 
 ## 🔐 Security Features
 
@@ -196,18 +230,21 @@ cd android-app
 - Email/Password login
 - Session management
 - Auto-logout on inactivity
+- Secure token storage
 
 ### Data Security
 - Encrypted local storage
 - Secure API communication
 - Role-based access control
 - Data validation
+- Firebase Security Rules
 
 ### Permissions
 - Location access for attendance
 - Camera for receipt photos
 - Storage for file uploads
 - Network for synchronization
+- Notifications for updates
 
 ## 📈 Performance Optimizations
 
@@ -216,18 +253,21 @@ cd android-app
 - Image caching with Coil
 - Efficient state management
 - Smooth animations
+- Material 3 optimizations
 
 ### Data Performance
 - Pagination for large datasets
 - Efficient database queries
 - Background sync optimization
 - Memory management
+- Room database indexing
 
 ### Network Performance
 - Request caching
 - Compression
 - Retry mechanisms
 - Offline queue management
+- Firebase offline persistence
 
 ## 🧪 Testing
 
@@ -236,18 +276,21 @@ cd android-app
 - Repository testing
 - Use case testing
 - Utility function testing
+- Database testing
 
 ### UI Tests
 - Screen navigation testing
 - User interaction testing
 - Accessibility testing
 - Performance testing
+- Compose testing
 
 ### Integration Tests
 - Database operations
-- API integration
+- Firebase integration
 - Sync functionality
 - End-to-end workflows
+- Location services
 
 ## 📱 Device Requirements
 
@@ -294,18 +337,28 @@ cd android-app
 
 ## 🔄 Version History
 
-### v1.0.0 (Current)
+### v2.0.0 (Current Update)
+- Complete Firebase integration
+- Room database implementation
+- Material 3 design system
+- Location services
+- Camera integration
+- Real-time sync
+- Push notifications
+
+### v1.0.0 (Previous)
 - Initial release
-- Core functionality
+- Basic functionality
 - Offline support
 - Basic sync
 
 ### Planned Features
-- Push notifications
 - Advanced analytics
 - Multi-language support
 - Dark mode
 - Widget support
+- Biometric authentication
+- Advanced reporting
 
 ## 📄 License
 
@@ -327,7 +380,10 @@ The app includes analytics for:
 - Performance metrics
 - Error tracking
 - Sync statistics
+- Location analytics
 
 ---
 
 **Built with ❤️ for retail staff management**
+
+*Updated with modern Android development practices and comprehensive feature set*
